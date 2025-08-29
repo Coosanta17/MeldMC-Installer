@@ -1,1 +1,0 @@
-/usr/bin/c++ -Wl,--dependency-file=CMakeFiles/MeldInstaller.dir/link.d CMakeFiles/MeldInstaller.dir/main.cpp.o -o MeldInstaller
