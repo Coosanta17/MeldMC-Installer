@@ -60,3 +60,5 @@ bin/
 debug/
 release/
 
+.idea/
+conan_provider.cmake
