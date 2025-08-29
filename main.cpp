@@ -1,30 +1,30 @@
-#include <QtWidgets/QApplication>
-#include <QtWidgets/QMainWindow>
-#include <QtWidgets/QHBoxLayout>
-#include <QtWidgets/QLabel>
-#include <QtWidgets/QComboBox>
-#include <QtWidgets/QLineEdit>
-#include <QtWidgets/QPushButton>
-#include <QtWidgets/QMessageBox>
-#include <QtWidgets/QFileDialog>
-#include <QtWidgets/QProgressBar>
-#include <QtCore/QDir>
-#include <QtCore/QStandardPaths>
-#include <QtCore/QJsonObject>
-#include <QtCore/QDateTime>
-#include <QtCore/QThread>
+#include <FL/Fl.H>
+#include <FL/Fl_Window.H>
+#include <FL/Fl_Button.H>
+#include <FL/Fl_Choice.H>
+#include <FL/Fl_Input.H>
+#include <FL/Fl_Box.H>
+#include <FL/Fl_Progress.H>
+#include <FL/fl_ask.H>
+#include <FL/Fl_File_Chooser.H>
+
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
 #include <tinyxml2.h>
+
 #include <iostream>
+#include <string>
+#include <vector>
 #include <filesystem>
 #include <fstream>
 #include <regex>
+#include <thread>
+#include <cstdlib>
 
-// Helper structure for write callback
+// Helper structure for CURL write callback
 struct WriteCallback {
     std::string data;
-
+    
     static size_t writeFunction(void *contents, size_t size, size_t nmemb, WriteCallback *userp) {
         size_t realsize = size * nmemb;
         userp->data.append(static_cast<char *>(contents), realsize);
@@ -36,456 +36,384 @@ struct WriteCallback {
 struct Version {
     std::string version;
     bool isSnapshot;
-
-    Version(const std::string &ver, bool snap) : version(ver), isSnapshot(snap) {
-    }
-
-    // Parse version for sorting (e.g., "0.0.1e" -> {0, 0, 1, 'e'})
+    
+    Version(const std::string &ver, bool snap) : version(ver), isSnapshot(snap) {}
+    
     bool operator<(const Version &other) const {
-        // Simple string comparison for now - could be enhanced for semantic versioning
         return version < other.version;
     }
 };
 
-class MeldInstaller : public QMainWindow {
-    Q_OBJECT
-
-public:
-    MeldInstaller(QWidget *parent = nullptr);
-
-    ~MeldInstaller();
-
-private slots:
-    void onInstallClicked();
-
-    void onBrowseClicked();
-
-    void onVersionTypeChanged();
-
+class MeldInstaller {
 private:
-    // UI Components
-    QComboBox *versionCombo;
-    QComboBox *typeCombo;
-    QLineEdit *minecraftDirEdit;
-    QPushButton *installButton;
-    QPushButton *browseButton;
-    QProgressBar *progressBar;
-
-    // Data
+    Fl_Window* window;
+    Fl_Choice* versionTypeChoice;
+    Fl_Choice* versionChoice;
+    Fl_Input* minecraftDirInput;
+    Fl_Button* browseButton;
+    Fl_Button* installButton;
+    Fl_Progress* progressBar;
+    Fl_Box* statusLabel;
+    
     std::vector<Version> releases;
     std::vector<Version> snapshots;
-
-    // Methods
-    std::string downloadUrl(const std::string &url);
-
-    std::vector<Version> parseVersionsFromXml(const std::string &xmlContent);
-
-    void fetchVersions();
-
-    void populateVersionCombo();
-
-    QString getDefaultMinecraftDir();
-
-    QString getOSString();
-
-    bool installMeldMC(const QString &version, const QString &minecraftDir);
-
-    void showError(const QString &title, const QString &message);
-
-    void showSuccess(const QString &message);
-};
-
-MeldInstaller::MeldInstaller(QWidget *parent)
-    : QMainWindow(parent) {
-    setWindowTitle("MeldMC Installer");
-    setFixedSize(500, 300);
-
-    // Central widget and layout
-    QWidget *centralWidget = new QWidget;
-    setCentralWidget(centralWidget);
-
-    QVBoxLayout *mainLayout = new QVBoxLayout(centralWidget);
-
-    // Title
-    QLabel *titleLabel = new QLabel("MeldMC Installer");
-    titleLabel->setStyleSheet("font-size: 18px; font-weight: bold; margin: 10px;");
-    titleLabel->setAlignment(Qt::AlignCenter);
-    mainLayout->addWidget(titleLabel);
-
-    // Version type selection
-    QHBoxLayout *typeLayout = new QHBoxLayout;
-    typeLayout->addWidget(new QLabel("Version Type:"));
-    typeCombo = new QComboBox;
-    typeCombo->addItem("Releases");
-    typeCombo->addItem("Snapshots");
-    connect(typeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &MeldInstaller::onVersionTypeChanged);
-    typeLayout->addWidget(typeCombo);
-    mainLayout->addLayout(typeLayout);
-
-    // Version selection
-    QHBoxLayout *versionLayout = new QHBoxLayout;
-    versionLayout->addWidget(new QLabel("Version:"));
-    versionCombo = new QComboBox;
-    versionLayout->addWidget(versionCombo);
-    mainLayout->addLayout(versionLayout);
-
-    // Minecraft directory selection
-    QHBoxLayout *dirLayout = new QHBoxLayout;
-    dirLayout->addWidget(new QLabel("Minecraft Directory:"));
-    minecraftDirEdit = new QLineEdit;
-    minecraftDirEdit->setText(getDefaultMinecraftDir());
-    dirLayout->addWidget(minecraftDirEdit);
-    browseButton = new QPushButton("Browse");
-    connect(browseButton, &QPushButton::clicked, this, &MeldInstaller::onBrowseClicked);
-    dirLayout->addWidget(browseButton);
-    mainLayout->addLayout(dirLayout);
-
-    // Progress bar
-    progressBar = new QProgressBar;
-    progressBar->setVisible(false);
-    mainLayout->addWidget(progressBar);
-
-    // Install button
-    installButton = new QPushButton("Install MeldMC");
-    connect(installButton, &QPushButton::clicked, this, &MeldInstaller::onInstallClicked);
-    mainLayout->addWidget(installButton);
-
-    mainLayout->addStretch();
-
-    // Initialize curl
-    curl_global_init(CURL_GLOBAL_DEFAULT);
-
-    // Fetch versions
-    fetchVersions();
-}
-
-MeldInstaller::~MeldInstaller() {
-    curl_global_cleanup();
-}
-
-QString MeldInstaller::getDefaultMinecraftDir() {
+    
+public:
+    MeldInstaller() {
+        // Create main window
+        window = new Fl_Window(500, 400, "MeldMC Installer");
+        
+        // Version type selector
+        new Fl_Box(20, 20, 100, 25, "Version Type:");
+        versionTypeChoice = new Fl_Choice(130, 20, 150, 25);
+        versionTypeChoice->add("Release");
+        versionTypeChoice->add("Snapshot");
+        versionTypeChoice->value(0);
+        versionTypeChoice->callback(versionTypeChangedCB, this);
+        
+        // Version selector
+        new Fl_Box(20, 60, 100, 25, "Version:");
+        versionChoice = new Fl_Choice(130, 60, 200, 25);
+        
+        // Minecraft directory
+        new Fl_Box(20, 100, 100, 25, "Minecraft Dir:");
+        minecraftDirInput = new Fl_Input(130, 100, 250, 25);
+        browseButton = new Fl_Button(390, 100, 80, 25, "Browse...");
+        browseButton->callback(browseCB, this);
+        
+        // Install button
+        installButton = new Fl_Button(200, 160, 100, 30, "Install");
+        installButton->callback(installCB, this);
+        
+        // Progress bar
+        progressBar = new Fl_Progress(20, 220, 460, 20);
+        progressBar->minimum(0);
+        progressBar->maximum(100);
+        progressBar->value(0);
+        
+        // Status label
+        statusLabel = new Fl_Box(20, 250, 460, 120, "Ready to install MeldMC");
+        statusLabel->align(FL_ALIGN_TOP_LEFT | FL_ALIGN_INSIDE | FL_ALIGN_WRAP);
+        
+        window->end();
+        
+        // Initialize
+        setDefaultMinecraftDir();
+        loadVersions();
+    }
+    
+    void setDefaultMinecraftDir() {
+        std::string defaultDir;
+        
 #ifdef _WIN32
-    QString appData = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
-    return appData + "/.minecraft";
+        const char* appdata = std::getenv("APPDATA");
+        if (appdata) {
+            defaultDir = std::string(appdata) + "\\.minecraft";
+        }
 #elif __APPLE__
-    QString home = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
-    return home + "/Library/Application Support/minecraft";
+        const char* home = std::getenv("HOME");
+        if (home) {
+            defaultDir = std::string(home) + "/Library/Application Support/minecraft";
+        }
 #else
-    QString home = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
-    return home + "/.minecraft";
+        const char* home = std::getenv("HOME");
+        if (home) {
+            defaultDir = std::string(home) + "/.minecraft";
+        }
 #endif
-}
-
-QString MeldInstaller::getOSString() {
-#ifdef _WIN32
-    return "win";
-#elif __APPLE__
-#ifdef __aarch64__
-        return "mac-aarch64";
-#else
-        return "mac";
-#endif
-#else
-    return "linux";
-#endif
-}
-
-std::string MeldInstaller::downloadUrl(const std::string &url) {
-    CURL *curl = curl_easy_init();
-    WriteCallback writeCallback;
-
-    if (curl) {
+        
+        if (!defaultDir.empty()) {
+            minecraftDirInput->value(defaultDir.c_str());
+        }
+    }
+    
+    std::string httpGet(const std::string& url) {
+        CURL* curl = curl_easy_init();
+        if (!curl) return "";
+        
+        WriteCallback writeCallback;
+        
         curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback::writeFunction);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &writeCallback);
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, "MeldMC-Installer/1.0");
-
+        
         CURLcode res = curl_easy_perform(curl);
         curl_easy_cleanup(curl);
-
-        if (res != CURLE_OK) {
-            throw std::runtime_error("Failed to download: " + std::string(curl_easy_strerror(res)));
+        
+        return (res == CURLE_OK) ? writeCallback.data : "";
+    }
+    
+    std::vector<Version> parseVersionsFromXML(const std::string& xmlData, bool isSnapshot) {
+        std::vector<Version> versions;
+        
+        tinyxml2::XMLDocument doc;
+        if (doc.Parse(xmlData.c_str()) != tinyxml2::XML_SUCCESS) {
+            return versions;
+        }
+        
+        auto metadata = doc.FirstChildElement("metadata");
+        if (!metadata) return versions;
+        
+        auto versioning = metadata->FirstChildElement("versioning");
+        if (!versioning) return versions;
+        
+        auto versionsList = versioning->FirstChildElement("versions");
+        if (!versionsList) return versions;
+        
+        for (auto version = versionsList->FirstChildElement("version"); 
+             version; version = version->NextSiblingElement("version")) {
+            const char* versionText = version->GetText();
+            if (versionText) {
+                versions.emplace_back(versionText, isSnapshot);
+            }
+        }
+        
+        // Sort versions (latest first)
+        std::sort(versions.rbegin(), versions.rend());
+        
+        return versions;
+    }
+    
+    void loadVersions() {
+        statusLabel->label("Loading versions...");
+        Fl::check();
+        
+        // Load releases
+        std::string releasesXML = httpGet("https://repo.coosanta.net/releases/org/coosanta/meldmc/maven-metadata.xml");
+        if (!releasesXML.empty()) {
+            releases = parseVersionsFromXML(releasesXML, false);
+        }
+        
+        // Load snapshots  
+        std::string snapshotsXML = httpGet("https://repo.coosanta.net/snapshots/org/coosanta/meldmc/maven-metadata.xml");
+        if (!snapshotsXML.empty()) {
+            snapshots = parseVersionsFromXML(snapshotsXML, true);
+        }
+        
+        // If no versions loaded, add mock data for testing
+        if (releases.empty() && snapshots.empty()) {
+            releases.emplace_back("0.0.1", false);
+            releases.emplace_back("0.0.2", false);
+            snapshots.emplace_back("0.0.3-SNAPSHOT", true);
+            statusLabel->label("Using mock data - repository not available");
+        } else {
+            statusLabel->label("Versions loaded successfully");
+        }
+        
+        updateVersionChoice();
+    }
+    
+    void updateVersionChoice() {
+        versionChoice->clear();
+        
+        const std::vector<Version>& currentVersions = 
+            (versionTypeChoice->value() == 0) ? releases : snapshots;
+            
+        for (const auto& version : currentVersions) {
+            versionChoice->add(version.version.c_str());
+        }
+        
+        if (!currentVersions.empty()) {
+            versionChoice->value(0);
         }
     }
-
-    return writeCallback.data;
-}
-
-std::vector<Version> MeldInstaller::parseVersionsFromXml(const std::string &xmlContent) {
-    std::vector<Version> versions;
-    tinyxml2::XMLDocument doc;
-
-    if (doc.Parse(xmlContent.c_str()) != tinyxml2::XML_SUCCESS) {
-        throw std::runtime_error("Failed to parse XML");
+    
+    std::string getOSString() {
+#ifdef _WIN32
+        return "win";
+#elif __APPLE__
+    #ifdef __aarch64__
+        return "mac-aarch64";
+    #else
+        return "mac";
+    #endif
+#else
+        return "linux";
+#endif
     }
-
-    auto metadata = doc.FirstChildElement("metadata");
-    if (!metadata) return versions;
-
-    auto versioning = metadata->FirstChildElement("versioning");
-    if (!versioning) return versions;
-
-    auto versionsList = versioning->FirstChildElement("versions");
-    if (!versionsList) return versions;
-
-    for (auto version = versionsList->FirstChildElement("version");
-         version;
-         version = version->NextSiblingElement("version")) {
-        const char *versionText = version->GetText();
-        if (versionText) {
-            bool isSnapshot = xmlContent.find("snapshots") != std::string::npos;
-            versions.emplace_back(versionText, isSnapshot);
-        }
+    
+    bool downloadFile(const std::string& url, const std::string& filePath) {
+        std::string content = httpGet(url);
+        if (content.empty()) return false;
+        
+        std::ofstream file(filePath);
+        if (!file.is_open()) return false;
+        
+        file << content;
+        return true;
     }
-
-    // Sort versions (latest first)
-    std::sort(versions.rbegin(), versions.rend());
-
-    return versions;
-}
-
-void MeldInstaller::fetchVersions() {
-    try {
-        progressBar->setVisible(true);
-        progressBar->setRange(0, 0); // Indeterminate progress
-        QApplication::processEvents();
-
-        try {
-            // Fetch releases
-            std::string releasesXml = downloadUrl(
-                "https://repo.coosanta.net/releases/net/coosanta/meldmc/maven-metadata.xml");
-            releases = parseVersionsFromXml(releasesXml);
-
-            // Fetch snapshots
-            std::string snapshotsXml = downloadUrl(
-                "https://repo.coosanta.net/snapshots/net/coosanta/meldmc/maven-metadata.xml");
-            snapshots = parseVersionsFromXml(snapshotsXml);
-        } catch (const std::exception &e) {
-            // If repository is not available, use mock data for testing
-            std::cout << "Repository not available, using mock data: " << e.what() << std::endl;
-
-            // Mock releases
-            releases.emplace_back("1.0.0", false);
-            releases.emplace_back("0.9.1", false);
-            releases.emplace_back("0.9.0", false);
-            releases.emplace_back("0.8.5", false);
-
-            // Mock snapshots
-            snapshots.emplace_back("1.1.0-SNAPSHOT", true);
-            snapshots.emplace_back("1.0.1-SNAPSHOT", true);
-            snapshots.emplace_back("1.0.0e", true);
-            snapshots.emplace_back("0.9.2-SNAPSHOT", true);
-        }
-
-        progressBar->setVisible(false);
-        populateVersionCombo();
-    } catch (const std::exception &e) {
-        progressBar->setVisible(false);
-        showError("Failed to fetch versions", QString::fromStdString(e.what()));
-    }
-}
-
-void MeldInstaller::populateVersionCombo() {
-    versionCombo->clear();
-
-    const std::vector<Version> &versions = (typeCombo->currentIndex() == 0) ? releases : snapshots;
-
-    for (const auto &version: versions) {
-        versionCombo->addItem(QString::fromStdString(version.version));
-    }
-}
-
-void MeldInstaller::onVersionTypeChanged() {
-    populateVersionCombo();
-}
-
-void MeldInstaller::onBrowseClicked() {
-    QString dir = QFileDialog::getExistingDirectory(this, "Select Minecraft Directory",
-                                                    minecraftDirEdit->text());
-    if (!dir.isEmpty()) {
-        minecraftDirEdit->setText(dir);
-    }
-}
-
-void MeldInstaller::onInstallClicked() {
-    QString version = versionCombo->currentText();
-    QString minecraftDir = minecraftDirEdit->text();
-
-    if (version.isEmpty()) {
-        showError("No Version Selected", "Please select a version to install.");
-        return;
-    }
-
-    if (minecraftDir.isEmpty()) {
-        showError("No Directory Selected", "Please select a Minecraft directory.");
-        return;
-    }
-
-    if (!QDir(minecraftDir).exists()) {
-        showError("Invalid Directory", "The selected Minecraft directory does not exist.");
-        return;
-    }
-
-    installButton->setEnabled(false);
-    progressBar->setVisible(true);
-    progressBar->setRange(0, 100);
-    QApplication::processEvents();
-
-    if (installMeldMC(version, minecraftDir)) {
-        showSuccess("MeldMC " + version + " has been successfully installed!");
-    }
-
-    installButton->setEnabled(true);
-    progressBar->setVisible(false);
-}
-
-bool MeldInstaller::installMeldMC(const QString &version, const QString &minecraftDir) {
-    try {
-        progressBar->setValue(20);
-        QApplication::processEvents();
-
-        // Create launcher profile
-        QString profilesPath = minecraftDir + "/launcher_profiles.json";
-        QJsonDocument profilesDoc;
-        QJsonObject profiles;
-
-        // Load existing profiles if file exists
-        if (QFile::exists(profilesPath)) {
-            QFile file(profilesPath);
-            if (file.open(QIODevice::ReadOnly)) {
-                profilesDoc = QJsonDocument::fromJson(file.readAll());
-                if (profilesDoc.isObject() && profilesDoc.object().contains("profiles")) {
-                    profiles = profilesDoc.object()["profiles"].toObject();
+    
+    bool createProfile(const std::string& minecraftDir, const std::string& version) {
+        std::string profilesPath = minecraftDir + "/launcher_profiles.json";
+        
+        nlohmann::json profiles;
+        
+        // Load existing profiles if they exist
+        if (std::filesystem::exists(profilesPath)) {
+            std::ifstream file(profilesPath);
+            if (file.is_open()) {
+                try {
+                    file >> profiles;
+                } catch (...) {
+                    // If parsing fails, start with empty profiles
+                    profiles = nlohmann::json::object();
                 }
             }
         }
-
-        progressBar->setValue(40);
-        QApplication::processEvents();
-
-        // Add MeldMC profile
-        QJsonObject meldProfile;
-        QString currentTime = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
-        meldProfile["created"] = currentTime;
-        meldProfile["icon"] = "bedrock";
-        meldProfile["lastUsed"] = currentTime;
-        meldProfile["lastVersionId"] = "meldmc-" + version;
-        meldProfile["name"] = "MeldMC " + version;
-        meldProfile["type"] = "custom";
-
-        profiles["meldmc"] = meldProfile;
-
-        // Save launcher profiles
-        QJsonObject rootObject;
-        rootObject["profiles"] = profiles;
-        profilesDoc.setObject(rootObject);
-
-        QFile file(profilesPath);
-        if (!file.open(QIODevice::WriteOnly)) {
-            throw std::runtime_error("Failed to write launcher profiles");
+        
+        // Ensure basic structure exists
+        if (!profiles.contains("profiles")) {
+            profiles["profiles"] = nlohmann::json::object();
         }
-        file.write(profilesDoc.toJson());
-        file.close();
-
-        progressBar->setValue(60);
-        QApplication::processEvents();
-
-        // Create version directory
-        QString versionDir = minecraftDir + "/versions/meldmc-" + version;
-        QDir().mkpath(versionDir);
-
-        progressBar->setValue(80);
-        QApplication::processEvents();
-
-        // Download client JSON
-        QString osString = getOSString();
-        std::string clientUrl = "https://repo.coosanta.net/releases/net/coosanta/meldmc/" +
-                                version.toStdString() + "/meldmc-" + version.toStdString() +
-                                "-client-" + osString.toStdString() + ".json";
-
-        std::string clientJson;
-        try {
-            clientJson = downloadUrl(clientUrl);
-        } catch (const std::exception &e) {
-            // Mock client JSON for testing
-            std::cout << "Client JSON not available, using mock data: " << e.what() << std::endl;
-
-            nlohmann::json mockClient = {
-                {"id", "meldmc-" + version.toStdString()},
-                {"type", "release"},
-                {"mainClass", "net.minecraft.client.Main"},
-                {
-                    "minecraftArguments",
-                    "--username ${auth_player_name} --version ${version_name} --gameDir ${game_directory} --assetsDir ${assets_root} --assetIndex ${assets_index_name} --uuid ${auth_uuid} --accessToken ${auth_access_token} --userType ${user_type} --versionType ${version_type}"
-                },
-                {"releaseTime", QDateTime::currentDateTimeUtc().toString(Qt::ISODate).toStdString()},
-                {"time", QDateTime::currentDateTimeUtc().toString(Qt::ISODate).toStdString()},
-                {"libraries", nlohmann::json::array()},
-                {
-                    "downloads", {
-                        {
-                            "client", {
-                                {
-                                    "url",
-                                    "https://repo.coosanta.net/releases/net/coosanta/meldmc/" + version.toStdString() +
-                                    "/meldmc-" + version.toStdString() + "-client.jar"
-                                },
-                                {"sha1", ""},
-                                {"size", 0}
-                            }
-                        }
-                    }
-                }
-            };
-            clientJson = mockClient.dump(2);
-        }
-
-        // Save client JSON
-        QString clientPath = versionDir + "/meldmc-" + version + ".json";
-        QFile clientFile(clientPath);
-        if (!clientFile.open(QIODevice::WriteOnly)) {
-            throw std::runtime_error("Failed to write client JSON");
-        }
-        clientFile.write(clientJson.c_str());
-        clientFile.close();
-
-        progressBar->setValue(100);
-        QApplication::processEvents();
-
+        
+        // Create MeldMC profile
+        std::string profileName = "MeldMC " + version;
+        auto& profile = profiles["profiles"][profileName];
+        
+        profile["name"] = profileName;
+        profile["type"] = "custom";
+        profile["created"] = "1970-01-01T00:00:00.000Z";
+        profile["lastUsed"] = "1970-01-01T00:00:00.000Z";
+        profile["icon"] = "Grass";
+        profile["lastVersionId"] = "meldmc-" + version;
+        
+        // Save profiles
+        std::ofstream file(profilesPath);
+        if (!file.is_open()) return false;
+        
+        file << profiles.dump(2);
         return true;
-    } catch (const std::exception &e) {
-        showError("Installation Failed", QString::fromStdString(e.what()));
-        return false;
     }
-}
+    
+    void performInstall() {
+        std::string minecraftDir = minecraftDirInput->value();
+        if (minecraftDir.empty()) {
+            fl_alert("Please select a Minecraft directory");
+            return;
+        }
+        
+        int versionIndex = versionChoice->value();
+        if (versionIndex < 0) {
+            fl_alert("Please select a version");
+            return;
+        }
+        
+        const std::vector<Version>& currentVersions = 
+            (versionTypeChoice->value() == 0) ? releases : snapshots;
+            
+        if (versionIndex >= currentVersions.size()) {
+            fl_alert("Invalid version selected");
+            return;
+        }
+        
+        std::string version = currentVersions[versionIndex].version;
+        std::string osString = getOSString();
+        
+        // Update status
+        statusLabel->label("Installing MeldMC...");
+        progressBar->value(10);
+        Fl::check();
+        
+        // Create directories
+        std::string versionDir = minecraftDir + "/versions/meldmc-" + version;
+        try {
+            std::filesystem::create_directories(versionDir);
+        } catch (...) {
+            fl_alert("Failed to create version directory");
+            progressBar->value(0);
+            statusLabel->label("Installation failed");
+            return;
+        }
+        
+        progressBar->value(30);
+        Fl::check();
+        
+        // Download client JSON
+        std::string clientUrl = "https://repo.coosanta.net/releases/org/coosanta/meldmc/" + version + "/meldmc-" + version + "-client-" + osString + ".json";
+        std::string clientPath = versionDir + "/meldmc-" + version + ".json";
+        
+        statusLabel->label("Downloading client configuration...");
+        progressBar->value(50);
+        Fl::check();
+        
+        if (!downloadFile(clientUrl, clientPath)) {
+            // Create mock client JSON for testing
+            nlohmann::json mockClient;
+            mockClient["id"] = "meldmc-" + version;
+            mockClient["type"] = "release";
+            mockClient["time"] = "2024-01-01T00:00:00+00:00";
+            mockClient["releaseTime"] = "2024-01-01T00:00:00+00:00";
+            mockClient["minecraftVersion"] = "1.21.4";
+            
+            std::ofstream file(clientPath);
+            if (file.is_open()) {
+                file << mockClient.dump(2);
+            } else {
+                fl_alert("Failed to create client configuration");
+                progressBar->value(0);
+                statusLabel->label("Installation failed");
+                return;
+            }
+        }
+        
+        progressBar->value(70);
+        Fl::check();
+        
+        // Create/update launcher profile
+        statusLabel->label("Creating launcher profile...");
+        progressBar->value(90);
+        Fl::check();
+        
+        if (!createProfile(minecraftDir, version)) {
+            fl_alert("Failed to create launcher profile");
+            progressBar->value(0);
+            statusLabel->label("Installation failed");
+            return;
+        }
+        
+        progressBar->value(100);
+        statusLabel->label("MeldMC installed successfully!");
+        fl_message("MeldMC %s has been installed successfully!\n\nYou can now select the MeldMC profile in your Minecraft launcher.", version.c_str());
+    }
+    
+    // Static callbacks
+    static void versionTypeChangedCB(Fl_Widget*, void* data) {
+        static_cast<MeldInstaller*>(data)->updateVersionChoice();
+    }
+    
+    static void browseCB(Fl_Widget*, void* data) {
+        MeldInstaller* installer = static_cast<MeldInstaller*>(data);
+        const char* dir = fl_dir_chooser("Select Minecraft Directory", installer->minecraftDirInput->value());
+        if (dir) {
+            installer->minecraftDirInput->value(dir);
+        }
+    }
+    
+    static void installCB(Fl_Widget*, void* data) {
+        MeldInstaller* installer = static_cast<MeldInstaller*>(data);
+        installer->performInstall();
+    }
+    
+    void show() {
+        window->show();
+    }
+    
+    ~MeldInstaller() {
+        delete window;
+    }
+};
 
-void MeldInstaller::showError(const QString &title, const QString &message) {
-    QMessageBox msgBox;
-    msgBox.setIcon(QMessageBox::Critical);
-    msgBox.setWindowTitle(title);
-    msgBox.setText(message);
-    msgBox.setStandardButtons(QMessageBox::Ok);
-
-    // Make error message selectable
-    msgBox.setTextInteractionFlags(Qt::TextSelectableByMouse);
-    msgBox.exec();
-}
-
-void MeldInstaller::showSuccess(const QString &message) {
-    QMessageBox::information(this, "Success", message);
-    close();
-}
-
-int main(int argc, char *argv[]) {
-    QApplication app(argc, argv);
-
+int main() {
+    // Initialize CURL
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    
     MeldInstaller installer;
     installer.show();
-
-    return QApplication::exec();
+    
+    int result = Fl::run();
+    
+    curl_global_cleanup();
+    return result;
 }
-
-#include "main.moc"
