@@ -54,3 +54,5 @@ deactivate_run.sh
 environment_run.ps1.env
 environment_run.sh.env
 
+.idea/
+conan_provider.cmake
