@@ -1,0 +1,3 @@
+/home/runner/work/MeldMC-Installer/MeldMC-Installer/build/CMakeFiles/MeldInstaller.dir
+/home/runner/work/MeldMC-Installer/MeldMC-Installer/build/CMakeFiles/edit_cache.dir
+/home/runner/work/MeldMC-Installer/MeldMC-Installer/build/CMakeFiles/rebuild_cache.dir
