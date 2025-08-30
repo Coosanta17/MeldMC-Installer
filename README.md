@@ -15,7 +15,7 @@ A lightweight, cross-platform GUI installer for MeldMC Minecraft instances built
 ### Steps
 **Install dependencies with APT:**
 ```bash
-sudo apt install libfltk1.3-dev libcurl4-openssl-dev libtinyxml2-dev nlohmann-json3-dev
+sudo apt install libfltk1.3-dev libcurl4-openssl-dev libtinyxml2-dev nlohmann-json3-dev libssl-dev libcrypto++-dev
 ```
 
 **Install dependencies on Windows/Mac:**
