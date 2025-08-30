@@ -1,12 +1,11 @@
 name: Build MeldMC-Installer
 
 on:
-  push:
-    branches: [ master, main ]
   pull_request:
     branches: [ master, main ]
   release:
     types: [ published ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -32,182 +31,183 @@ jobs:
             additional_packages: ""
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Install base dependencies
-      run: |
-        sudo apt update
-        sudo apt install -y \
-          build-essential \
-          cmake \
-          ninja-build \
-          pkg-config \
-          libfltk1.3-dev \
-          libcurl4-openssl-dev \
-          libtinyxml2-dev \
-          nlohmann-json3-dev \
-          libssl-dev \
-          libcrypto++-dev \
-          ${{ matrix.target.additional_packages }}
+      - name: Install base dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y --no-install-recommends \
+            -o Dpkg::Options::="--no-triggers" \
+            build-essential \
+            cmake \
+            ninja-build \
+            pkg-config \
+            libfltk1.3-dev \
+            libcurl4-openssl-dev \
+            libtinyxml2-dev \
+            nlohmann-json3-dev \
+            libssl-dev \
+            libcrypto++-dev \
+            ${{ matrix.target.additional_packages }}
 
-    - name: Setup MinGW for Windows
-      if: matrix.target.name == 'windows-x64'
-      run: |
-        # Create MinGW toolchain file
-        mkdir -p cmake
-        cat > cmake/mingw-toolchain.cmake << 'EOF'
-        set(CMAKE_SYSTEM_NAME Windows)
-        set(CMAKE_C_COMPILER x86_64-w64-mingw32-gcc)
-        set(CMAKE_CXX_COMPILER x86_64-w64-mingw32-g++)
-        set(CMAKE_RC_COMPILER x86_64-w64-mingw32-windres)
-        set(CMAKE_FIND_ROOT_PATH /usr/x86_64-w64-mingw32)
-        set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-        set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-        set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-        set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
-        EOF
+      - name: Setup MinGW for Windows
+        if: matrix.target == 'windows-x64'
+        run: |
+          # Create MinGW toolchain file
+          mkdir -p cmake
+          cat > cmake/mingw-toolchain.cmake << 'EOF'
+          set(CMAKE_SYSTEM_NAME Windows)
+          set(CMAKE_C_COMPILER x86_64-w64-mingw32-gcc)
+          set(CMAKE_CXX_COMPILER x86_64-w64-mingw32-g++)
+          set(CMAKE_RC_COMPILER x86_64-w64-mingw32-windres)
+          set(CMAKE_FIND_ROOT_PATH /usr/x86_64-w64-mingw32)
+          set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+          set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+          set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+          set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+          EOF
 
-    - name: Setup OSXCross for macOS
-      if: contains(matrix.target.name, 'macos')
-      run: |
-        # Install OSXCross dependencies
-        sudo apt install -y clang llvm-dev libxml2-dev uuid-dev libssl-dev bash patch make tar xz-utils bzip2 gzip sed cpio libbz2-dev
-        
-        # Clone and build OSXCross
-        git clone https://github.com/tpoechtrager/osxcross.git /tmp/osxcross
-        cd /tmp/osxcross
-        
-        # Download macOS SDK (you might need to adjust this URL or provide your own SDK)
-        wget -O tarballs/MacOSX12.3.sdk.tar.xz https://github.com/joseluisq/macosx-sdks/releases/download/12.3/MacOSX12.3.sdk.tar.xz
-        
-        # Build OSXCross
-        UNATTENDED=yes OSX_VERSION_MIN=10.15 ./build.sh
-        
-        # Add to PATH
-        echo "/tmp/osxcross/target/bin" >> $GITHUB_PATH
+      - name: Setup OSXCross for macOS
+        if: contains(matrix.target, 'macos')
+        run: |
+          # Install OSXCross dependencies
+          sudo apt install -y clang llvm-dev libxml2-dev uuid-dev libssl-dev bash patch make tar xz-utils bzip2 gzip sed cpio libbz2-dev
+          
+          # Clone and build OSXCross
+          git clone https://github.com/tpoechtrager/osxcross.git /tmp/osxcross
+          cd /tmp/osxcross
+          
+          # Download macOS SDK (you might need to adjust this URL or provide your own SDK)
+          wget -O tarballs/MacOSX12.3.sdk.tar.xz https://github.com/joseluisq/macosx-sdks/releases/download/12.3/MacOSX12.3.sdk.tar.xz
+          
+          # Build OSXCross
+          UNATTENDED=yes OSX_VERSION_MIN=10.15 ./build.sh
+          
+          # Add to PATH
+          echo "/tmp/osxcross/target/bin" >> $GITHUB_PATH
 
-    - name: Create macOS toolchain files
-      if: contains(matrix.target.name, 'macos')
-      run: |
-        mkdir -p cmake
-        
-        # x64 toolchain
-        cat > cmake/osxcross-toolchain.cmake << 'EOF'
-        set(CMAKE_SYSTEM_NAME Darwin)
-        set(CMAKE_SYSTEM_PROCESSOR x86_64)
-        set(CMAKE_C_COMPILER x86_64-apple-darwin21.4-clang)
-        set(CMAKE_CXX_COMPILER x86_64-apple-darwin21.4-clang++)
-        set(CMAKE_FIND_ROOT_PATH /tmp/osxcross/target/SDK/MacOSX12.3.sdk)
-        set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-        set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-        set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-        set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
-        set(CMAKE_OSX_SYSROOT /tmp/osxcross/target/SDK/MacOSX12.3.sdk)
-        set(CMAKE_OSX_DEPLOYMENT_TARGET 10.15)
-        EOF
-        
-        # ARM64 toolchain
-        cat > cmake/osxcross-arm64-toolchain.cmake << 'EOF'
-        set(CMAKE_SYSTEM_NAME Darwin)
-        set(CMAKE_SYSTEM_PROCESSOR aarch64)
-        set(CMAKE_C_COMPILER aarch64-apple-darwin21.4-clang)
-        set(CMAKE_CXX_COMPILER aarch64-apple-darwin21.4-clang++)
-        set(CMAKE_FIND_ROOT_PATH /tmp/osxcross/target/SDK/MacOSX12.3.sdk)
-        set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-        set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-        set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-        set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
-        set(CMAKE_OSX_SYSROOT /tmp/osxcross/target/SDK/MacOSX12.3.sdk)
-        set(CMAKE_OSX_DEPLOYMENT_TARGET 11.0)
-        EOF
+      - name: Create macOS toolchain files
+        if: contains(matrix.target, 'macos')
+        run: |
+          mkdir -p cmake
+          
+          # x64 toolchain
+          cat > cmake/osxcross-toolchain.cmake << 'EOF'
+          set(CMAKE_SYSTEM_NAME Darwin)
+          set(CMAKE_SYSTEM_PROCESSOR x86_64)
+          set(CMAKE_C_COMPILER x86_64-apple-darwin21.4-clang)
+          set(CMAKE_CXX_COMPILER x86_64-apple-darwin21.4-clang++)
+          set(CMAKE_FIND_ROOT_PATH /tmp/osxcross/target/SDK/MacOSX12.3.sdk)
+          set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+          set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+          set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+          set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+          set(CMAKE_OSX_SYSROOT /tmp/osxcross/target/SDK/MacOSX12.3.sdk)
+          set(CMAKE_OSX_DEPLOYMENT_TARGET 10.15)
+          EOF
+          
+          # ARM64 toolchain
+          cat > cmake/osxcross-arm64-toolchain.cmake << 'EOF'
+          set(CMAKE_SYSTEM_NAME Darwin)
+          set(CMAKE_SYSTEM_PROCESSOR aarch64)
+          set(CMAKE_C_COMPILER aarch64-apple-darwin21.4-clang)
+          set(CMAKE_CXX_COMPILER aarch64-apple-darwin21.4-clang++)
+          set(CMAKE_FIND_ROOT_PATH /tmp/osxcross/target/SDK/MacOSX12.3.sdk)
+          set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+          set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+          set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+          set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+          set(CMAKE_OSX_SYSROOT /tmp/osxcross/target/SDK/MacOSX12.3.sdk)
+          set(CMAKE_OSX_DEPLOYMENT_TARGET 11.0)
+          EOF
 
-    - name: Install cross-compilation dependencies
-      if: matrix.target.name != 'linux-x64'
-      run: |
-        # For Windows, we'll need to build dependencies or use vcpkg
-        if [[ "${{ matrix.target.name }}" == "windows-x64" ]]; then
-          # Install vcpkg for Windows dependencies
-          git clone https://github.com/Microsoft/vcpkg.git /tmp/vcpkg
-          cd /tmp/vcpkg
-          ./bootstrap-vcpkg.sh
-          ./vcpkg install curl[openssl]:x64-mingw-static nlohmann-json:x64-mingw-static tinyxml2:x64-mingw-static fltk:x64-mingw-static
-        fi
+      - name: Install cross-compilation dependencies
+        if: matrix.target != 'linux-x64'
+        run: |
+          # For Windows, we'll need to build dependencies or use vcpkg
+          if [[ "${{ matrix.target }}" == "windows-x64" ]]; then
+            # Install vcpkg for Windows dependencies
+            git clone https://github.com/Microsoft/vcpkg.git /tmp/vcpkg
+            cd /tmp/vcpkg
+            ./bootstrap-vcpkg.sh
+            ./vcpkg install curl[openssl]:x64-mingw-static nlohmann-json:x64-mingw-static tinyxml2:x64-mingw-static fltk:x64-mingw-static
+          fi
 
-    - name: Configure CMake
-      run: |
-        cmake_args=""
-        if [[ "${{ matrix.target.name }}" == "windows-x64" ]]; then
-          cmake_args="-DCMAKE_TOOLCHAIN_FILE=/tmp/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-mingw-static"
-        else
-          cmake_args="${{ matrix.target.cmake_toolchain }}"
-        fi
-        
-        cmake -B build-${{ matrix.target.name }} \
-          -G Ninja \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_INSTALL_PREFIX=install-${{ matrix.target.name }} \
-          $cmake_args
+      - name: Configure CMake
+        run: |
+          cmake_args=""
+          if [[ "${{ matrix.target }}" == "windows-x64" ]]; then
+            cmake_args="-DCMAKE_TOOLCHAIN_FILE=/tmp/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-mingw-static"
+          else
+            cmake_args="${{ matrix.target.cmake_toolchain }}"
+          fi
+          
+          cmake -B build-${{ matrix.target }} \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=install-${{ matrix.target }} \
+            $cmake_args
 
-    - name: Build
-      run: |
-        cmake --build build-${{ matrix.target.name }} --config Release
+      - name: Build
+        run: |
+          cmake --build build-${{ matrix.target }} --config Release
 
-    - name: Strip binaries (conservative)
-      run: |
-        cd build-${{ matrix.target.name }}
-        
-        if [[ "${{ matrix.target.name }}" == "linux-x64" ]]; then
-          strip --strip-unneeded MeldInstaller
-        elif [[ "${{ matrix.target.name }}" == "windows-x64" ]]; then
-          x86_64-w64-mingw32-strip --strip-unneeded MeldInstaller.exe
-        elif [[ "${{ matrix.target.name }}" == "macos-x64" ]]; then
-          x86_64-apple-darwin21.4-strip -S MeldInstaller
-        elif [[ "${{ matrix.target.name }}" == "macos-arm64" ]]; then
-          aarch64-apple-darwin21.4-strip -S MeldInstaller
-        fi
+      - name: Strip binaries (conservative)
+        run: |
+          cd build-${{ matrix.target }}
+          
+          if [[ "${{ matrix.target }}" == "linux-x64" ]]; then
+            strip --strip-unneeded MeldInstaller
+          elif [[ "${{ matrix.target }}" == "windows-x64" ]]; then
+            x86_64-w64-mingw32-strip --strip-unneeded MeldInstaller.exe
+          elif [[ "${{ matrix.target }}" == "macos-x64" ]]; then
+            x86_64-apple-darwin21.4-strip -S MeldInstaller
+          elif [[ "${{ matrix.target }}" == "macos-arm64" ]]; then
+            aarch64-apple-darwin21.4-strip -S MeldInstaller
+          fi
 
-    - name: Create artifact directory
-      run: |
-        mkdir -p artifacts/${{ matrix.target.name }}
-        if [[ "${{ matrix.target.name }}" == "windows-x64" ]]; then
-          cp build-${{ matrix.target.name }}/MeldInstaller.exe artifacts/${{ matrix.target.name }}/
-        else
-          cp build-${{ matrix.target.name }}/MeldInstaller artifacts/${{ matrix.target.name }}/
-        fi
+      - name: Create artifact directory
+        run: |
+          mkdir -p artifacts/${{ matrix.target }}
+          if [[ "${{ matrix.target }}" == "windows-x64" ]]; then
+            cp build-${{ matrix.target }}/MeldInstaller.exe artifacts/${{ matrix.target }}/
+          else
+            cp build-${{ matrix.target }}/MeldInstaller artifacts/${{ matrix.target }}/
+          fi
 
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: MeldInstaller-${{ matrix.target.name }}
-        path: artifacts/${{ matrix.target.name }}/
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: MeldInstaller-${{ matrix.target }}
+          path: artifacts/${{ matrix.target }}/
 
   release:
     if: github.event_name == 'release'
     needs: build
     runs-on: ubuntu-latest
     steps:
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
 
-    - name: Create release archives
-      run: |
-        cd artifacts
-        for dir in */; do
-          target_name=${dir%/}
-          target_name=${target_name#MeldInstaller-}
-          if [[ "$target_name" == "windows-x64" ]]; then
-            cd "$dir" && zip -r "../MeldInstaller-${target_name}.zip" . && cd ..
-          else
-            tar -czf "MeldInstaller-${target_name}.tar.gz" -C "$dir" .
-          fi
-        done
+      - name: Create release archives
+        run: |
+          cd artifacts
+          for dir in */; do
+            target_name=${dir%/}
+            target_name=${target_name#MeldInstaller-}
+            if [[ "$target_name" == "windows-x64" ]]; then
+              cd "$dir" && zip -r "../MeldInstaller-${target_name}.zip" . && cd ..
+            else
+              tar -czf "MeldInstaller-${target_name}.tar.gz" -C "$dir" .
+            fi
+          done
 
-    - name: Upload release assets
-      uses: softprops/action-gh-release@v1
-      with:
-        files: artifacts/*.{zip,tar.gz}
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/*.{zip,tar.gz}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
