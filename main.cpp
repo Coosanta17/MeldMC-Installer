@@ -25,7 +25,7 @@
 struct WriteCallback {
     std::string data;
 
-    static size_t writeFunction(void *contents, size_t size, size_t nmemb, WriteCallback *userp) {
+    static size_t writeFunction(void *contents, const size_t size, const size_t nmemb, WriteCallback *userp) {
         const size_t realsize = size * nmemb;
         userp->data.append(static_cast<char *>(contents), realsize);
         return realsize;
@@ -179,13 +179,13 @@ public:
         Fl::check();
 
         // Load releases
-        std::string releasesXML = httpGet("https://repo.coosanta.net/releases/org/coosanta/meldmc/maven-metadata.xml");
-        if (!releasesXML.empty()) {
+        if (const std::string releasesXML = httpGet(
+            "https://repo.coosanta.net/releases/org/coosanta/meldmc/maven-metadata.xml"); !releasesXML.empty()) {
             releases = parseVersionsFromXML(releasesXML, false);
         }
 
         // Load snapshots
-        std::string snapshotsXML =
+        const std::string snapshotsXML =
                 httpGet("https://repo.coosanta.net/snapshots/org/coosanta/meldmc/maven-metadata.xml");
         if (!snapshotsXML.empty()) {
             snapshots = parseVersionsFromXML(snapshotsXML, true);
@@ -251,8 +251,7 @@ public:
 
         // Load existing profiles if they exist
         if (std::filesystem::exists(profilesPath)) {
-            std::ifstream file(profilesPath);
-            if (file.is_open()) {
+            if (std::ifstream file(profilesPath); file.is_open()) {
                 try {
                     file >> profiles;
                 } catch (...) {
@@ -393,7 +392,7 @@ public:
     }
 
     static void installCB(Fl_Widget *, void *data) {
-        auto *installer = static_cast<MeldInstaller *>(data);
+        const auto *installer = static_cast<MeldInstaller *>(data);
         installer->performInstall();
     }
 
@@ -407,7 +406,6 @@ public:
 };
 
 int main() {
-    // Initialize CURL
     curl_global_init(CURL_GLOBAL_DEFAULT);
 
     const MeldInstaller installer;

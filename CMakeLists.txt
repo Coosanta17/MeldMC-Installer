@@ -3,7 +3,6 @@ project(MeldInstaller)
 
 set(CMAKE_CXX_STANDARD 20)
 
-# Find required packages
 find_package(CURL REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(tinyxml2 REQUIRED)
