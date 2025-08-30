@@ -1,0 +1,214 @@
+name: Build All Platforms
+
+on:
+  pull_request:
+    branches: [ master, main ]
+  release:
+    types: [ published ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            cmake_args: -DCMAKE_BUILD_TYPE=Release
+            strip_args: --strip-unneeded
+            artifact_name: MeldInstaller-linux-x64
+            
+          - os: windows-latest
+            platform: windows
+            arch: x64
+            cmake_args: -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+            strip_args: --strip-unneeded
+            artifact_name: MeldInstaller-windows-x64.exe
+            
+          - os: macos-latest
+            platform: macos
+            arch: x64
+            cmake_args: -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64
+            strip_args: -S
+            artifact_name: MeldInstaller-macos-x64
+            
+          - os: macos-latest
+            platform: macos
+            arch: arm64
+            cmake_args: -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64
+            strip_args: -S
+            artifact_name: MeldInstaller-macos-arm64
+
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Cache vcpkg (Windows)
+      if: matrix.platform == 'windows'
+      uses: actions/cache@v4
+      with:
+        path: |
+          C:\vcpkg\installed
+          C:\vcpkg\packages
+          C:\vcpkg\buildtrees
+        key: vcpkg-${{ matrix.platform }}-${{ matrix.arch }}-${{ hashFiles('**/vcpkg.json', '**/CMakeLists.txt') }}
+        restore-keys: |
+          vcpkg-${{ matrix.platform }}-${{ matrix.arch }}-
+          vcpkg-${{ matrix.platform }}-
+
+    - name: Cache Homebrew (macOS)
+      if: matrix.platform == 'macos'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/Library/Caches/Homebrew
+          /opt/homebrew/var/homebrew/locks
+          /opt/homebrew/Library/Homebrew/locks
+        key: brew-${{ matrix.platform }}-${{ matrix.arch }}-${{ hashFiles('**/CMakeLists.txt') }}
+        restore-keys: |
+          brew-${{ matrix.platform }}-${{ matrix.arch }}-
+          brew-${{ matrix.platform }}-
+
+    - name: Cache apt packages (Linux)
+      if: matrix.platform == 'linux'
+      uses: actions/cache@v4
+      with:
+        path: |
+          /var/cache/apt/archives
+          /var/lib/apt/lists
+        key: apt-${{ matrix.platform }}-${{ hashFiles('**/CMakeLists.txt') }}
+        restore-keys: |
+          apt-${{ matrix.platform }}-
+
+    - name: Cache CMake build (All platforms)
+      uses: actions/cache@v4
+      with:
+        path: |
+          build
+          ~/.cmake
+        key: cmake-${{ matrix.platform }}-${{ matrix.arch }}-${{ hashFiles('**/CMakeLists.txt', '**/*.cpp', '**/*.h', '**/*.hpp') }}
+        restore-keys: |
+          cmake-${{ matrix.platform }}-${{ matrix.arch }}-
+          cmake-${{ matrix.platform }}-
+
+    - name: Setup vcpkg (Windows)
+      if: matrix.platform == 'windows'
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgGitCommitId: 'master'
+
+    - name: Install dependencies (Ubuntu)
+      if: matrix.platform == 'linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          libcurl4-openssl-dev \
+          nlohmann-json3-dev \
+          libtinyxml2-dev \
+          libfltk1.3-dev \
+          binutils
+
+    - name: Install dependencies (Windows)
+      if: matrix.platform == 'windows'
+      run: |
+        vcpkg install curl:x64-windows-static
+        vcpkg install nlohmann-json:x64-windows-static
+        vcpkg install tinyxml2:x64-windows-static
+        vcpkg install fltk:x64-windows-static
+        vcpkg integrate install
+
+    - name: Install dependencies (macOS)
+      if: matrix.platform == 'macos'
+      run: |
+        # Clean up Homebrew cache periodically to prevent it from growing too large
+        brew cleanup
+        brew install cmake curl nlohmann-json tinyxml2 fltk
+
+    - name: Configure CMake
+      run: |
+        cmake -B build ${{ matrix.cmake_args }}
+
+    - name: Build (with ccache speedup)
+      run: |
+        # Install ccache for faster compilation
+        if [ "${{ matrix.platform }}" = "linux" ]; then
+          sudo apt-get install -y ccache
+          export PATH="/usr/lib/ccache:$PATH"
+        elif [ "${{ matrix.platform }}" = "macos" ]; then
+          brew install ccache
+          export PATH="/opt/homebrew/bin/ccache:$PATH"
+        fi
+        
+        cmake --build build --config Release --parallel $(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
+
+    - name: Cache ccache (Linux/macOS)
+      if: matrix.platform != 'windows'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.ccache
+          ~/Library/Caches/ccache
+        key: ccache-${{ matrix.platform }}-${{ matrix.arch }}-${{ github.sha }}
+        restore-keys: |
+          ccache-${{ matrix.platform }}-${{ matrix.arch }}-
+
+    - name: Strip binary (Linux/macOS)
+      if: matrix.platform != 'windows'
+      run: |
+        if [ "${{ matrix.platform }}" = "linux" ]; then
+          strip ${{ matrix.strip_args }} build/MeldInstaller
+          mv build/MeldInstaller build/${{ matrix.artifact_name }}
+        else
+          strip ${{ matrix.strip_args }} build/MeldInstaller
+          mv build/MeldInstaller build/${{ matrix.artifact_name }}
+        fi
+
+    - name: Strip binary (Windows)
+      if: matrix.platform == 'windows'
+      run: |
+        strip ${{ matrix.strip_args }} build/Release/MeldInstaller.exe
+        move build/Release/MeldInstaller.exe build/${{ matrix.artifact_name }}
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact_name }}
+        path: build/${{ matrix.artifact_name }}
+        retention-days: 30
+
+  create-release:
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Create release archives
+      run: |
+        cd artifacts
+        for dir in */; do
+          cd "$dir"
+          if [[ "$dir" == *"windows"* ]]; then
+            zip "../${dir%/}.zip" *
+          else
+            tar -czf "../${dir%/}.tar.gz" *
+          fi
+          cd ..
+        done
+
+    - name: Upload release assets
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          artifacts/*.zip
+          artifacts/*.tar.gz
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
