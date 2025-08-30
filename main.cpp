@@ -57,6 +57,8 @@ class MeldInstaller {
 
     std::vector<Version> releases;
     std::vector<Version> snapshots;
+    std::thread loadingThread;
+    bool versionsLoaded = false;
 
 public:
     MeldInstaller() {
@@ -75,15 +77,20 @@ public:
         new Fl_Box(20, 60, 100, 25, "Version:");
         versionChoice = new Fl_Choice(130, 60, 200, 25);
 
+        // Deactivate choices until versions are loaded to avoid menu update races
+        versionTypeChoice->deactivate();
+        versionChoice->deactivate();
+
         // Minecraft directory
         new Fl_Box(20, 100, 100, 25, "Minecraft Dir:");
         minecraftDirInput = new Fl_Input(130, 100, 250, 25);
         browseButton = new Fl_Button(390, 100, 80, 25, "Browse...");
         browseButton->callback(browseCB, this);
 
-        // Install button
+        // Install button (start disabled)
         installButton = new Fl_Button(200, 160, 100, 30, "Install");
         installButton->callback(installCB, this);
+        installButton->deactivate();
 
         // Progress bar
         progressBar = new Fl_Progress(20, 220, 460, 20);
@@ -92,14 +99,20 @@ public:
         progressBar->value(0);
 
         // Status label
-        statusLabel = new Fl_Box(20, 250, 460, 120, "Ready to install MeldMC");
+        statusLabel = new Fl_Box(20, 250, 460, 120, "Loading versions...");
         statusLabel->align(FL_ALIGN_TOP_LEFT | FL_ALIGN_INSIDE | FL_ALIGN_WRAP);
 
         window->end();
 
         // Initialize
         setDefaultMinecraftDir();
-        loadVersions();
+
+        // Show window immediately
+        window->show();
+
+        // Start loading versions in background thread
+        loadingThread = std::thread(&MeldInstaller::loadVersionsThreaded, this);
+        loadingThread.detach();
     }
 
     void setDefaultMinecraftDir() const {
@@ -174,31 +187,50 @@ public:
         return versions;
     }
 
-    void loadVersions() {
-        statusLabel->label("Loading versions...");
-        Fl::check();
-
+    void loadVersionsThreaded() {
         // Load releases
+        std::vector<Version> tempReleases;
         if (const std::string releasesXML = httpGet(
-            "https://repo.coosanta.net/releases/org/coosanta/meldmc/maven-metadata.xml"); !releasesXML.empty()) {
-            releases = parseVersionsFromXML(releasesXML, false);
+            "https://repo.coosanta.net/releases/net/coosanta/meldmc/maven-metadata.xml"); !releasesXML.empty()) {
+            tempReleases = parseVersionsFromXML(releasesXML, false);
         }
 
         // Load snapshots
-        const std::string snapshotsXML =
-                httpGet("https://repo.coosanta.net/snapshots/org/coosanta/meldmc/maven-metadata.xml");
-        if (!snapshotsXML.empty()) {
-            snapshots = parseVersionsFromXML(snapshotsXML, true);
+        std::vector<Version> tempSnapshots;
+        if (const std::string snapshotsXML = httpGet(
+            "https://repo.coosanta.net/snapshots/net/coosanta/meldmc/maven-metadata.xml"); !snapshotsXML.empty()) {
+            tempSnapshots = parseVersionsFromXML(snapshotsXML, true);
         }
 
-        // If no versions loaded, add mock data for testing
+        // Store temporary results for the callback
+        this->tempReleases = std::move(tempReleases);
+        this->tempSnapshots = std::move(tempSnapshots);
+
+        // Update UI in main thread
+        Fl::awake([](void *data) {
+            auto *installer = static_cast<MeldInstaller *>(data);
+            installer->onVersionsLoaded(std::move(installer->tempReleases), std::move(installer->tempSnapshots));
+        }, this);
+    }
+
+    void onVersionsLoaded(std::vector<Version> loadedReleases, std::vector<Version> loadedSnapshots) {
+        releases = std::move(loadedReleases);
+        snapshots = std::move(loadedSnapshots);
+        versionsLoaded = true;
+
+        // Show error if no versions could be loaded
         if (releases.empty() && snapshots.empty()) {
-            releases.emplace_back("0.0.1", false);
-            releases.emplace_back("0.0.2", false);
-            snapshots.emplace_back("0.0.3-SNAPSHOT", true);
-            statusLabel->label("Using mock data - repository not available");
+            statusLabel->label("Error: Failed to load versions from repository");
+            fl_alert("Error: Could not connect to the MeldMC repository.\n\n"
+                "Please check your internet connection and try again.\n"
+                "If the problem persists, the repository may be temporarily unavailable.");
+            installButton->deactivate();
         } else {
             statusLabel->label("Versions loaded successfully");
+            versionTypeChoice->activate();
+            versionChoice->activate();
+            installButton->activate();
+            installButton->activate();
         }
 
         updateVersionChoice();
@@ -274,7 +306,7 @@ public:
         profile["type"] = "custom";
         profile["created"] = "1970-01-01T00:00:00.000Z";
         profile["lastUsed"] = "1970-01-01T00:00:00.000Z";
-        profile["icon"] = "Grass";
+        profile["icon"] = "Grass"; // TODO change icon
         profile["lastVersionId"] = "meldmc-" + version;
 
         // Save profiles
@@ -286,13 +318,13 @@ public:
     }
 
     void performInstall() const {
-        std::string minecraftDir = minecraftDirInput->value();
+        const std::string minecraftDir = minecraftDirInput->value();
         if (minecraftDir.empty()) {
             fl_alert("Please select a Minecraft directory");
             return;
         }
 
-        int versionIndex = versionChoice->value();
+        const int versionIndex = versionChoice->value();
         if (versionIndex < 0) {
             fl_alert("Please select a version");
             return;
@@ -306,8 +338,8 @@ public:
             return;
         }
 
-        std::string version = currentVersions[versionIndex].version;
-        std::string osString = getOSString();
+        const std::string version = currentVersions[versionIndex].version;
+        const std::string osString = getOSString();
 
         // Update status
         statusLabel->label("Installing MeldMC...");
@@ -315,7 +347,7 @@ public:
         Fl::check();
 
         // Create directories
-        std::string versionDir = minecraftDir + "/versions/meldmc-" + version;
+        const std::string versionDir = minecraftDir + "/versions/meldmc-" + version;
         try {
             std::filesystem::create_directories(versionDir);
         } catch (...) {
@@ -329,32 +361,19 @@ public:
         Fl::check();
 
         // Download client JSON
-        std::string clientUrl = "https://repo.coosanta.net/releases/org/coosanta/meldmc/" + version + "/meldmc-" +
-                                version + "-client-" + osString + ".json";
-        std::string clientPath = versionDir + "/meldmc-" + version + ".json";
+        const std::string clientUrl = "https://repo.coosanta.net/releases/net/coosanta/meldmc/" + version + "/meldmc-" +
+                                      version + "-client-" + osString + ".json";
+        const std::string clientPath = versionDir + "/meldmc-" + version + ".json";
 
         statusLabel->label("Downloading client configuration...");
         progressBar->value(50);
         Fl::check();
 
         if (!downloadFile(clientUrl, clientPath)) {
-            // Create mock client JSON for testing
-            nlohmann::json mockClient;
-            mockClient["id"] = "meldmc-" + version;
-            mockClient["type"] = "release";
-            mockClient["time"] = "2024-01-01T00:00:00+00:00";
-            mockClient["releaseTime"] = "2024-01-01T00:00:00+00:00";
-            mockClient["minecraftVersion"] = "1.21.4";
-
-            std::ofstream file(clientPath);
-            if (file.is_open()) {
-                file << mockClient.dump(2);
-            } else {
-                fl_alert("Failed to create client configuration");
-                progressBar->value(0);
-                statusLabel->label("Installation failed");
-                return;
-            }
+            fl_alert("Failed to download client configuration from repository");
+            progressBar->value(0);
+            statusLabel->label("Installation failed");
+            return;
         }
 
         progressBar->value(70);
@@ -396,20 +415,24 @@ public:
         installer->performInstall();
     }
 
-    void show() const {
-        window->show();
-    }
-
     ~MeldInstaller() {
+        if (loadingThread.joinable()) {
+            loadingThread.join();
+        }
         delete window;
     }
+
+private:
+    std::vector<Version> tempReleases;
+    std::vector<Version> tempSnapshots;
 };
 
 int main() {
     curl_global_init(CURL_GLOBAL_DEFAULT);
 
+    Fl::scheme("basic");
+
     const MeldInstaller installer;
-    installer.show();
 
     const int result = Fl::run();
 

@@ -8,7 +8,7 @@ find_package(nlohmann_json REQUIRED)
 find_package(tinyxml2 REQUIRED)
 find_package(FLTK REQUIRED)
 
-add_executable(MeldInstaller main.cpp)
+add_executable(MeldInstaller WIN32 main.cpp)
 
 target_link_libraries(MeldInstaller PRIVATE
         CURL::libcurl
