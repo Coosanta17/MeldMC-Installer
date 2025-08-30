@@ -1,0 +1,254 @@
+name: Build Multi-Platform Binaries
+
+on:
+  pull_request:
+    branches: [ master, main ]
+  release:
+    types: [ published ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: linux-x64
+            cross_compile: false
+            cmake_args: -DCMAKE_BUILD_TYPE=Release
+            strip_args: --strip-unneeded
+            
+          - target: windows-x64
+            cross_compile: true
+            toolchain: mingw-w64
+            cmake_args: -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=/usr/share/mingw-w64/toolchain-x86_64-w64-mingw32.cmake
+            strip_args: --strip-unneeded
+            extension: .exe
+            
+          - target: macos-x64
+            cross_compile: true
+            toolchain: osxcross
+            cmake_args: -DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_NAME=Darwin -DCMAKE_OSX_ARCHITECTURES=x86_64
+            strip_args: -S
+            
+          - target: macos-arm64
+            cross_compile: true
+            toolchain: osxcross
+            cmake_args: -DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_NAME=Darwin -DCMAKE_OSX_ARCHITECTURES=arm64
+            strip_args: -S
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Cache dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          /home/runner/.cache
+          build
+          deps
+          /opt/osxcross
+        key: deps-${{ matrix.target }}-${{ hashFiles('**/CMakeLists.txt') }}
+        restore-keys: |
+          deps-${{ matrix.target }}-
+          deps-
+
+    - name: Install base tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          ccache \
+          ninja-build \
+          pkg-config \
+          curl \
+          git \
+          wget \
+          tar \
+          xz-utils
+
+    - name: Install cross-compilation toolchain
+      if: matrix.cross_compile
+      run: |
+        case "${{ matrix.toolchain }}" in
+          mingw-w64)
+            echo "Installing MinGW-w64 for Windows cross-compilation..."
+            sudo apt-get install -y \
+              mingw-w64 \
+              mingw-w64-tools \
+              gcc-mingw-w64-x86-64 \
+              g++-mingw-w64-x86-64
+            ;;
+          osxcross)
+            echo "Installing OSXCross for macOS cross-compilation..."
+            if [ ! -d "/opt/osxcross" ]; then
+              git clone https://github.com/tpoechtrager/osxcross.git /tmp/osxcross
+              cd /tmp/osxcross
+              wget -nc https://github.com/phracker/MacOSX-SDKs/releases/download/11.3/MacOSX11.3.sdk.tar.xz
+              mv MacOSX11.3.sdk.tar.xz tarballs/
+              UNATTENDED=yes OSX_VERSION_MIN=10.15 ./build.sh
+              sudo cp -r target /opt/osxcross
+            fi
+            ;;
+        esac
+
+    - name: Build dependencies from source
+      run: |
+        mkdir -p deps/install
+        
+        # Function to build a library for the target platform
+        build_lib() {
+          local name=$1
+          local url=$2
+          local cmake_args=$3
+          
+          echo "Building $name for ${{ matrix.target }}..."
+          cd deps
+          if [ ! -d "$name" ]; then
+            git clone "$url" "$name" --depth 1
+          fi
+          cd "$name"
+          
+          # Configure build based on target platform
+          case "${{ matrix.target }}" in
+            linux-*)
+              echo "Native Linux build for $name"
+              cmake -B build \
+                -DCMAKE_INSTALL_PREFIX=../install \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DBUILD_SHARED_LIBS=OFF \
+                $cmake_args .
+              ;;
+            windows-*)
+              echo "Cross-compiling $name for Windows using MinGW-w64"
+              cmake -B build \
+                -DCMAKE_TOOLCHAIN_FILE=/usr/share/mingw-w64/toolchain-x86_64-w64-mingw32.cmake \
+                -DCMAKE_INSTALL_PREFIX=../install \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DBUILD_SHARED_LIBS=OFF \
+                $cmake_args .
+              ;;
+            macos-*)
+              echo "Cross-compiling $name for macOS using OSXCross"
+              export PATH="/opt/osxcross/target/bin:$PATH"
+              export CC=x86_64-apple-darwin20.4-clang
+              export CXX=x86_64-apple-darwin20.4-clang++
+              cmake -B build \
+                -DCMAKE_SYSTEM_NAME=Darwin \
+                -DCMAKE_OSX_ARCHITECTURES=${{ matrix.target == 'macos-arm64' && 'arm64' || 'x86_64' }} \
+                -DCMAKE_INSTALL_PREFIX=../install \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DBUILD_SHARED_LIBS=OFF \
+                $cmake_args .
+              ;;
+          esac
+          
+          cmake --build build --parallel
+          cmake --install build
+          cd ../..
+        }
+        
+        # Build all dependencies for the target platform
+        build_lib "curl" "https://github.com/curl/curl.git" "-DBUILD_CURL_EXE=OFF -DHTTP_ONLY=ON -DCURL_USE_OPENSSL=OFF -DCURL_USE_MBEDTLS=ON"
+        build_lib "nlohmann_json" "https://github.com/nlohmann/json.git" "-DJSON_BuildTests=OFF"
+        build_lib "tinyxml2" "https://github.com/leethomason/tinyxml2.git" ""
+        build_lib "fltk" "https://github.com/fltk/fltk.git" "-DOPTION_BUILD_EXAMPLES=OFF -DFLTK_BUILD_TEST=OFF"
+
+    - name: Configure main project
+      run: |
+        export PKG_CONFIG_PATH="$PWD/deps/install/lib/pkgconfig:$PKG_CONFIG_PATH"
+        
+        echo "Configuring MeldInstaller for ${{ matrix.target }}..."
+        case "${{ matrix.target }}" in
+          linux-*)
+            echo "Native Linux configuration"
+            cmake -B build \
+              -DCMAKE_PREFIX_PATH="$PWD/deps/install" \
+              ${{ matrix.cmake_args }}
+            ;;
+          windows-*)
+            echo "Cross-compile configuration for Windows"
+            cmake -B build \
+              -DCMAKE_TOOLCHAIN_FILE=/usr/share/mingw-w64/toolchain-x86_64-w64-mingw32.cmake \
+              -DCMAKE_PREFIX_PATH="$PWD/deps/install" \
+              ${{ matrix.cmake_args }}
+            ;;
+          macos-*)
+            echo "Cross-compile configuration for macOS"
+            export PATH="/opt/osxcross/target/bin:$PATH"
+            cmake -B build \
+              -DCMAKE_SYSTEM_NAME=Darwin \
+              -DCMAKE_OSX_ARCHITECTURES=${{ matrix.target == 'macos-arm64' && 'arm64' || 'x86_64' }} \
+              -DCMAKE_PREFIX_PATH="$PWD/deps/install" \
+              ${{ matrix.cmake_args }}
+            ;;
+        esac
+
+    - name: Build main project
+      run: |
+        echo "Building MeldInstaller for ${{ matrix.target }}..."
+        cmake --build build --config Release --parallel
+
+    - name: Strip and prepare artifact
+      run: |
+        echo "Preparing artifact for ${{ matrix.target }}..."
+        case "${{ matrix.target }}" in
+          linux-*)
+            strip ${{ matrix.strip_args }} build/MeldInstaller
+            mv build/MeldInstaller build/MeldInstaller-${{ matrix.target }}
+            ;;
+          windows-*)
+            x86_64-w64-mingw32-strip ${{ matrix.strip_args }} build/MeldInstaller.exe
+            mv build/MeldInstaller.exe build/MeldInstaller-${{ matrix.target }}.exe
+            ;;
+          macos-*)
+            # OSXCross strip tool might not be available, skip if not found
+            if command -v x86_64-apple-darwin20.4-strip &> /dev/null; then
+              x86_64-apple-darwin20.4-strip ${{ matrix.strip_args }} build/MeldInstaller
+            else
+              echo "Cross-platform strip not available, skipping strip for macOS"
+            fi
+            mv build/MeldInstaller build/MeldInstaller-${{ matrix.target }}
+            ;;
+        esac
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: MeldInstaller-${{ matrix.target }}
+        path: build/MeldInstaller-${{ matrix.target }}*
+        retention-days: 30
+
+  create-release:
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Create release archives
+      run: |
+        cd artifacts
+        for dir in */; do
+          cd "$dir"
+          if [[ "$dir" == *"windows"* ]]; then
+            zip "../${dir%/}.zip" *
+          else
+            tar -czf "../${dir%/}.tar.gz" *
+          fi
+          cd ..
+        done
+
+    - name: Upload release assets
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          artifacts/*.zip
+          artifacts/*.tar.gz
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
