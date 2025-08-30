@@ -37,7 +37,7 @@ jobs:
       - name: Install base dependencies
         run: |
           sudo apt update
-          sudo apt install -y \ # I could put --no-install-recommends but then it doesn't install some random package and I'm too lazy to figure out all the packages that it needs to install.
+          sudo apt install -y \
             build-essential \
             cmake \
             ninja-build \
