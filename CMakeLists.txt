@@ -19,5 +19,10 @@ target_link_libraries(MeldInstaller PRIVATE
 
 target_include_directories(MeldInstaller PRIVATE ${FLTK_INCLUDE_DIRS})
 
-# Try to link statically where possible for smaller dependency footprint
-target_link_options(MeldInstaller PRIVATE -static-libgcc -static-libstdc++)
+if(WIN32)
+    target_link_options(MeldInstaller PRIVATE -static -static-libgcc -static-libstdc++)
+elseif(APPLE)
+    target_link_options(MeldInstaller PRIVATE -framework Cocoa)
+else()
+    target_link_options(MeldInstaller PRIVATE -static-libgcc -static-libstdc++)
+endif()
