@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -31,6 +31,7 @@ jobs:
           path: ~/.conan2/p
           key: conan-${{ runner.os }}-${{ hashFiles('conanfile.*') }}
           restore-keys: |
+            conan-${{ runner.os }}-${{ runner.arch }}-
             conan-${{ runner.os }}-
 
       - name: Install dependencies
@@ -49,4 +50,133 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: MeldInstaller-linux-x64
+          path: MeldInstaller
+          
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install Conan
+        run: pip install conan
+
+      - name: Detect Conan profile
+        run: conan profile detect --force
+
+      - name: Cache Conan packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2/p
+          key: conan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('conanfile.*') }}
+          restore-keys: |
+            conan-${{ runner.os }}-${{ runner.arch }}-
+            conan-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: conan install . --build=missing
+
+      - name: Configure CMake
+        run: cmake -S . -DCMAKE_TOOLCHAIN_FILE=build/Release/generators/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build . --config Release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MeldInstaller-windows-x64
+          path: Release/MeldInstaller.exe
+
+  build-mac-x64:
+    runs-on: macos-13
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install Conan
+        run: pip install conan
+
+      - name: Detect Conan profile
+        run: conan profile detect --force
+
+      - name: Cache Conan packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2/p
+          key: conan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('conanfile.*') }}
+          restore-keys: |
+            conan-${{ runner.os }}-${{ runner.arch }}-
+            conan-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: conan install . --build=missing
+
+      - name: Configure CMake
+        run: cmake -S . -DCMAKE_TOOLCHAIN_FILE=build/Release/generators/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: make -j
+
+      - name: Strip binary
+        run: strip --strip-unneeded MeldInstaller
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MeldInstaller-mac-x64
+          path: MeldInstaller
+
+  build-mac-aarch64:
+    runs-on: macos-14
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install Conan
+        run: pip install conan
+
+      - name: Detect Conan profile
+        run: conan profile detect --force
+
+      - name: Cache Conan packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2/p
+          key: conan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('conanfile.*') }}
+          restore-keys: |
+            conan-${{ runner.os }}-${{ runner.arch }}-
+            conan-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: conan install . --build=missing
+
+      - name: Configure CMake
+        run: cmake -S . -DCMAKE_TOOLCHAIN_FILE=build/Release/generators/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: make -j
+
+      - name: Strip binary
+        run: strip --strip-unneeded MeldInstaller
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MeldInstaller-mac-aarch64
           path: MeldInstaller
