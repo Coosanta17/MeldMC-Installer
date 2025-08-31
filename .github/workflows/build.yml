@@ -22,6 +22,9 @@ jobs:
       - name: Install Conan
         run: pip install conan
 
+      - name: Detect Conan profile
+        run: conan profile detect --force
+
       - name: Install dependencies
         run: conan install . --build=missing -c tools.system.package_manager:mode=install -c tools.system.package_manager:sudo=True
 
