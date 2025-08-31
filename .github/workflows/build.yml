@@ -14,6 +14,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install Conan
+        run: pip install conan
+
       - name: Install dependencies
         run: conan install . --build=missing -c tools.system.package_manager:mode=install -c tools.system.package_manager:sudo=True
 
