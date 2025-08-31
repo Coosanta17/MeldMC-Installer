@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.31)
 project(MeldInstaller)
 
 set(CMAKE_CXX_STANDARD 20)
+#set(CONAN_COMMAND "/home/coosanta/.local/bin/conan") # Debug for WSL
 
 find_package(CURL REQUIRED)
 find_package(nlohmann_json REQUIRED)
@@ -24,3 +25,7 @@ elseif (WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
 else ()
     target_link_options(MeldInstaller PRIVATE -static-libgcc -static-libstdc++)
 endif ()
+
+target_compile_options(MeldInstaller PRIVATE
+        $<$<AND:$<CONFIG:Release>,$<CXX_COMPILER_ID:GNU,Clang>>:-Os>
+)
