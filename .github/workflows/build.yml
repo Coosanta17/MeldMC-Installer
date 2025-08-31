@@ -91,7 +91,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: MeldInstaller-windows-x64
-          path: Release/MeldInstaller.exe
+          path: build\Release\Release\MeldInstaller.exe
 
   build-mac-x64:
     runs-on: macos-13
