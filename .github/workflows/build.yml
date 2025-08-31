@@ -82,7 +82,7 @@ jobs:
         run: conan install . --build=missing -of build/Release
 
       - name: Configure CMake
-        run: cmake -B build/Release -S . -G "Visual Studio 17 2022" -DCMAKE_TOOLCHAIN_FILE=build/Release/build/generators/conan_toolchain.cmake
+        run: cmake -B build/Release -S . -G "Visual Studio 17 2022" -DCMAKE_TOOLCHAIN_FILE="build/Release/build/generators/conan_toolchain.cmake"
 
       - name: Build
         run: cmake --build build/Release --config Release
