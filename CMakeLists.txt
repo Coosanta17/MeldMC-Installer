@@ -14,15 +14,13 @@ target_link_libraries(MeldInstaller PRIVATE
         CURL::libcurl
         nlohmann_json::nlohmann_json
         tinyxml2::tinyxml2
-        ${FLTK_LIBRARIES}
+        fltk::fltk
 )
 
-target_include_directories(MeldInstaller PRIVATE ${FLTK_INCLUDE_DIRS})
-
-if(WIN32)
-    target_link_options(MeldInstaller PRIVATE -static -static-libgcc -static-libstdc++)
-elseif(APPLE)
+if (APPLE)
     target_link_options(MeldInstaller PRIVATE -framework Cocoa)
-else()
+elseif (WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    # MSVC doesn't need static linking flags
+else ()
     target_link_options(MeldInstaller PRIVATE -static-libgcc -static-libstdc++)
-endif()
+endif ()

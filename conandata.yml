@@ -1,0 +1,8 @@
+# This file is managed by Conan, contents will be overwritten.
+# To keep your changes, remove these comment lines, but the plugin won't be able to modify your requirements
+
+requirements:
+  - "tinyxml2/11.0.0"
+  - "nlohmann_json/3.12.0"
+  - "libcurl/8.15.0"
+  - "fltk/1.4.1"
