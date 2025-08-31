@@ -82,7 +82,7 @@ jobs:
         run: conan install . --build=missing
 
       - name: Configure CMake
-        run: cmake -S . -DCMAKE_TOOLCHAIN_FILE=build/Release/generators/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -DCMAKE_TOOLCHAIN_FILE=D:\a\MeldMC-Installer\MeldMC-Installer\build\generators\ -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         run: cmake --build . --config Release
@@ -129,7 +129,7 @@ jobs:
         run: make -j
 
       - name: Strip binary
-        run: strip --strip-unneeded MeldInstaller
+        run: strip MeldInstaller
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -173,7 +173,7 @@ jobs:
         run: make -j
 
       - name: Strip binary
-        run: strip --strip-unneeded MeldInstaller
+        run: strip MeldInstaller
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
