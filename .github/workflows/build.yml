@@ -2,9 +2,9 @@ name: Build MeldMC-Installer
 
 on:
   pull_request:
-    branches: [master, main]
+    branches: [ master, main ]
   release:
-    types: [published]
+    types: [ published ]
   workflow_dispatch:
 
 jobs:
@@ -51,7 +51,7 @@ jobs:
         with:
           name: MeldInstaller-linux-x64
           path: MeldInstaller
-          
+
   build-windows:
     runs-on: windows-latest
     steps:
@@ -82,7 +82,7 @@ jobs:
         run: conan install . --build=missing
 
       - name: Configure CMake
-        run: cmake -S . -DCMAKE_TOOLCHAIN_FILE=D:\a\MeldMC-Installer\MeldMC-Installer\build\generators\ -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -DCMAKE_TOOLCHAIN_FILE=generators\conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         run: cmake --build . --config Release

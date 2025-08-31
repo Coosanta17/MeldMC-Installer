@@ -7,45 +7,48 @@ A lightweight, cross-platform GUI installer for MeldMC Minecraft instances built
 ### Prerequisites
 
 - CMake 3.31 or newer
-- FLTK 1.3 development libraries
-- libcurl development libraries
-- nlohmann/json library
-- tinyxml2 library
+- Conan 2 or newer
 
 ### Steps
-**Install dependencies with APT:**
-```bash
-sudo apt install libfltk1.3-dev libcurl4-openssl-dev libtinyxml2-dev nlohmann-json3-dev libssl-dev libcrypto++-dev
-```
+**Install dependencies with conan**
 
-**Install dependencies on Windows/Mac:**
-
-Good luck!
-
-***
-
-**Build with CMake**
+*Linux*:
 ```bash
 mkdir build && cd build
-cmake ..
-make
+conan install . --build=missing -c tools.system.package_manager:mode=install -c tools.system.package_manager:sudo=True
+```
+*Windows and Mac:*
+```bash
+mkdir build
+cd build
+conan install . --build=missing
+```
+
+**Build with CMake**
+
+*Linux and Mac:*
+```bash
+cmake -S .. -DCMAKE_TOOLCHAIN_FILE=build/Release/generators/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+make -j
+```
+*Windows:*
+```bash
+cmake -S .. -DCMAKE_TOOLCHAIN_FILE=generators\conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+cmake --build . --config Release
 ```
 
 The resulting binary (`MeldInstaller`) is self-contained and can be distributed as a single file.
 
 ## Usage
 
-Simply double-click the `MeldInstaller` executable - no installation required! The application will:
-
-1. **Auto-detect your platform**: Automatically sets the correct Minecraft directory for your OS
-2. **Fetch available versions**: Downloads the latest releases and snapshots
-3. **Provide a simple interface**: Clean, lightweight GUI for easy installation
+Simply double-click the `MeldInstaller` executable.
 
 ## What the Installer Does
 
-1. **Profile Creation**: Adds a "MeldMC" profile to your `launcher_profiles.json`
-2. **Version Setup**: Creates the version folder in ./versions/{version}
-3. **Client Download**: Downloads the platform-specific client JSON configuration from [https://repo.coosanta.net]
+1. Fetch available versions from repo
+2. Adds a "MeldMC" profile to `launcher_profiles.json`
+3. Creates the version folder in `./versions/{version}`
+4. Downloads the platform-specific client JSON configuration from https://repo.coosanta.net
 
 ## License
 
