@@ -9,10 +9,7 @@ MeldInstaller
 *.prof
 coverage.out
 
-# Legacy C++ files (moved to legacy/ directory)
-legacy/
-
-### C++ template (Legacy - being migrated to Go)
+### C++ template (Legacy - kept for reference)
 # Prerequisites
 *.d
 
@@ -33,6 +30,7 @@ legacy/
 
 # Fortran module files
 *.mod
+!go.mod
 *.smod
 
 # Compiled Static libraries
