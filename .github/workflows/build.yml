@@ -8,8 +8,49 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-linux:
-    runs-on: ubuntu-22.04
+  build-java:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2
+
+      - name: Build Java version
+        run: mvn clean package
+        working-directory: java
+
+      - name: Upload Java artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: meldmc-installer-java
+          path: java/target/meldmc-installer.jar
+
+  build-unix:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            artifact_name: MeldInstaller-linux-x64
+            strip_cmd: strip --strip-unneeded MeldInstaller
+          - os: macos-13
+            artifact_name: MeldInstaller-mac-x64
+            strip_cmd: strip MeldInstaller
+          - os: macos-14
+            artifact_name: MeldInstaller-mac-aarch64
+            strip_cmd: strip MeldInstaller
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -29,28 +70,30 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.conan2/p
-          key: conan-${{ runner.os }}-${{ hashFiles('conanfile.*') }}
-          restore-keys: |
-            conan-${{ runner.os }}-${{ runner.arch }}-
-            conan-${{ runner.os }}-
+          key: conan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/conandata.*') }}
+          restore-keys: conan-${{ runner.os }}-${{ runner.arch }}
 
       - name: Install dependencies
         run: conan install . --build=missing -c tools.system.package_manager:mode=install -c tools.system.package_manager:sudo=True
+        working-directory: c++
 
       - name: Configure CMake
         run: cmake -S . -DCMAKE_TOOLCHAIN_FILE=build/Release/generators/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+        working-directory: c++
 
       - name: Build
         run: make -j
+        working-directory: c++
 
       - name: Strip binary
-        run: strip --strip-unneeded MeldInstaller
+        run: ${{ matrix.strip_cmd }}
+        working-directory: c++
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MeldInstaller-linux-x64
-          path: MeldInstaller
+          name: ${{ matrix.artifact_name }}
+          path: c++/MeldInstaller
 
   build-windows:
     runs-on: windows-latest
@@ -73,110 +116,23 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.conan2/p
-          key: conan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('conanfile.*') }}
-          restore-keys: |
-            conan-${{ runner.os }}-${{ runner.arch }}-
-            conan-${{ runner.os }}-
+          key: conan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('conandata.*') }}
+          restore-keys: conan-${{ runner.os }}-${{ runner.arch }}
 
       - name: Install dependencies
         run: conan install . --build=missing -of build/Release
+        working-directory: c++
 
       - name: Configure CMake
         run: cmake -B build/Release -S . -G "Visual Studio 17 2022" -DCMAKE_TOOLCHAIN_FILE="build/Release/build/generators/conan_toolchain.cmake"
+        working-directory: c++
 
       - name: Build
         run: cmake --build build/Release --config Release
+        working-directory: c++
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: MeldInstaller-windows-x64
-          path: build\Release\Release\MeldInstaller.exe
-
-  build-mac-x64:
-    runs-on: macos-13
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'
-
-      - name: Install Conan
-        run: pip install conan
-
-      - name: Detect Conan profile
-        run: conan profile detect --force
-
-      - name: Cache Conan packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.conan2/p
-          key: conan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('conanfile.*') }}
-          restore-keys: |
-            conan-${{ runner.os }}-${{ runner.arch }}-
-            conan-${{ runner.os }}-
-
-      - name: Install dependencies
-        run: conan install . --build=missing
-
-      - name: Configure CMake
-        run: cmake -S . -DCMAKE_TOOLCHAIN_FILE=build/Release/generators/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
-
-      - name: Build
-        run: make -j
-
-      - name: Strip binary
-        run: strip MeldInstaller
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: MeldInstaller-mac-x64
-          path: MeldInstaller
-
-  build-mac-aarch64:
-    runs-on: macos-14
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'
-
-      - name: Install Conan
-        run: pip install conan
-
-      - name: Detect Conan profile
-        run: conan profile detect --force
-
-      - name: Cache Conan packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.conan2/p
-          key: conan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('conanfile.*') }}
-          restore-keys: |
-            conan-${{ runner.os }}-${{ runner.arch }}-
-            conan-${{ runner.os }}-
-
-      - name: Install dependencies
-        run: conan install . --build=missing
-
-      - name: Configure CMake
-        run: cmake -S . -DCMAKE_TOOLCHAIN_FILE=build/Release/generators/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
-
-      - name: Build
-        run: make -j
-
-      - name: Strip binary
-        run: strip MeldInstaller
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: MeldInstaller-mac-aarch64
-          path: MeldInstaller
+          path: c++\build\Release\Release\MeldInstaller.exe
