@@ -28,9 +28,8 @@ jobs:
           restore-keys: ${{ runner.os }}-m2
 
       - name: Build Java version
-        run: |
-          cd java
-          mvn clean package
+        run: mvn clean package
+        working-directory: java
 
       - name: Upload Java artifact
         uses: actions/upload-artifact@v4
@@ -38,42 +37,65 @@ jobs:
           name: meldmc-installer-java
           path: java/target/meldmc-installer.jar
 
-  build-linux:
-    runs-on: ubuntu-22.04
+  build-unix:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            artifact_name: MeldInstaller-linux-x64
+            strip_cmd: strip --strip-unneeded MeldInstaller
+          - os: macos-13
+            artifact_name: MeldInstaller-mac-x64
+            strip_cmd: strip MeldInstaller
+          - os: macos-14
+            artifact_name: MeldInstaller-mac-aarch64
+            strip_cmd: strip MeldInstaller
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          go-version: '1.21'
+          python-version: '3.x'
 
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev xorg-dev
+      - name: Install Conan
+        run: pip install conan
 
-      - name: Cache Go modules
+      - name: Detect Conan profile
+        run: conan profile detect --force
+
+      - name: Cache Conan packages
         uses: actions/cache@v4
         with:
-          path: ~/go/pkg/mod
-          key: go-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
+          path: ~/.conan2/p
+          key: conan-${{ runner.os }}-${{ hashFiles('conanfile.*') }}
           restore-keys: |
-            go-${{ runner.os }}-
+            conan-${{ runner.os }}-${{ runner.arch }}-
+            conan-${{ runner.os }}-
 
-      - name: Download dependencies
-        run: go mod download
+      - name: Install dependencies
+        run: conan install . --build=missing -c tools.system.package_manager:mode=install -c tools.system.package_manager:sudo=True
+        working-directory: c++
 
-      - name: Build (static)
-        run: CGO_ENABLED=1 go build -ldflags="-s -w -extldflags=-static" -a -installsuffix cgo -o meldmc-installer .
+      - name: Configure CMake
+        run: cmake -S . -DCMAKE_TOOLCHAIN_FILE=build/Release/generators/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+        working-directory: c++
+
+      - name: Build
+        run: make -j
+        working-directory: c++
 
       - name: Strip binary
-        run: strip meldmc-installer
+        run: ${{ matrix.strip_cmd }}
+        working-directory: c++
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: meldmc-installer-linux-x64
-          path: meldmc-installer
+          name: ${{ matrix.artifact_name }}
+          path: c++/MeldInstaller
 
   build-windows:
     runs-on: windows-latest
@@ -81,95 +103,40 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          go-version: '1.21'
+          python-version: '3.x'
 
-      - name: Cache Go modules
+      - name: Install Conan
+        run: pip install conan
+
+      - name: Detect Conan profile
+        run: conan profile detect --force
+
+      - name: Cache Conan packages
         uses: actions/cache@v4
         with:
-          path: ~\go\pkg\mod
-          key: go-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
+          path: ~/.conan2/p
+          key: conan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('conanfile.*') }}
           restore-keys: |
-            go-${{ runner.os }}-
+            conan-${{ runner.os }}-${{ runner.arch }}-
+            conan-${{ runner.os }}-
 
-      - name: Download dependencies
-        run: go mod download
+      - name: Install dependencies
+        run: conan install . --build=missing -of build/Release
+        working-directory: c++
 
-      - name: Build (static)
-        run: go build -ldflags="-s -w -H windowsgui" -o meldmc-installer.exe .
+      - name: Configure CMake
+        run: cmake -B build/Release -S . -G "Visual Studio 17 2022" -DCMAKE_TOOLCHAIN_FILE="build/Release/build/generators/conan_toolchain.cmake"
+        working-directory: c++
+
+      - name: Build
+        run: cmake --build build/Release --config Release
+        working-directory: c++
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: meldmc-installer-windows-x64
-          path: meldmc-installer.exe
-
-  build-mac-x64:
-    runs-on: macos-13
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.21'
-
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: ~/go/pkg/mod
-          key: go-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            go-${{ runner.os }}-
-
-      - name: Download dependencies
-        run: go mod download
-
-      - name: Build (static)
-        run: CGO_ENABLED=1 go build -ldflags="-s -w" -o meldmc-installer .
-
-      - name: Strip binary
-        run: strip meldmc-installer
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: meldmc-installer-mac-x64
-          path: meldmc-installer
-
-  build-mac-aarch64:
-    runs-on: macos-14
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.21'
-
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: ~/go/pkg/mod
-          key: go-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            go-${{ runner.os }}-
-
-      - name: Download dependencies
-        run: go mod download
-
-      - name: Build (static)
-        run: CGO_ENABLED=1 go build -ldflags="-s -w" -o meldmc-installer .
-
-      - name: Strip binary
-        run: strip meldmc-installer
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: meldmc-installer-mac-aarch64
-          path: meldmc-installer
+          name: MeldInstaller-windows-x64
+          path: c++\build\Release\Release\MeldInstaller.exe

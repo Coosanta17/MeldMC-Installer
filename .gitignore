@@ -1,15 +1,4 @@
-### Go template
-# Go build artifacts
-meldmc-installer
-meldmc-installer.exe
-MeldInstaller
-
-# Go specific
-*.test
-*.prof
-coverage.out
-
-### C++ template (Legacy - kept for reference)
+### C++ template
 # Prerequisites
 *.d
 

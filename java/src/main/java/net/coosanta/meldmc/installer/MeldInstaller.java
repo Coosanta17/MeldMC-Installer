@@ -1,28 +1,23 @@
 package net.coosanta.meldmc.installer;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.gson.*;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
 
 import javax.swing.*;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
-import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.NodeList;
 
 /**
  * MeldMC Installer main application using Swing
@@ -32,7 +27,6 @@ public class MeldInstaller extends JFrame {
     private static final int WINDOW_WIDTH = 500;
     private static final int WINDOW_HEIGHT = 400;
 
-    // UI Components
     private JComboBox<String> versionTypeChoice;
     private JComboBox<Version> versionChoice;
     private JTextField minecraftDirInput;
@@ -41,7 +35,6 @@ public class MeldInstaller extends JFrame {
     private JProgressBar progressBar;
     private JTextArea statusLabel;
 
-    // Data
     private List<Version> releases = new ArrayList<>();
     private List<Version> snapshots = new ArrayList<>();
     private boolean versionsLoaded = false;
@@ -52,17 +45,26 @@ public class MeldInstaller extends JFrame {
         loadVersionsAsync();
     }
 
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> new MeldInstaller().setVisible(true));
+    }
+
     private void initializeUI() {
+        try {
+            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+        } catch (ClassNotFoundException | InstantiationException | IllegalAccessException |
+                 UnsupportedLookAndFeelException e) {
+            throw new RuntimeException(e);
+        }
+
         setTitle(WINDOW_TITLE);
         setSize(WINDOW_WIDTH, WINDOW_HEIGHT);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setResizable(false);
         setLocationRelativeTo(null);
 
-        // Use absolute layout to match C++ version exactly
         setLayout(null);
 
-        // Version type selector
         JLabel versionTypeLabel = new JLabel("Version Type:");
         versionTypeLabel.setBounds(20, 20, 100, 25);
         add(versionTypeLabel);
@@ -70,14 +72,9 @@ public class MeldInstaller extends JFrame {
         versionTypeChoice = new JComboBox<>(new String[]{"Release", "Snapshot"});
         versionTypeChoice.setBounds(130, 20, 150, 25);
         versionTypeChoice.setEnabled(false);
-        versionTypeChoice.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                updateVersionChoice();
-            }
-        });
+        versionTypeChoice.addActionListener(e -> updateVersionChoice());
         add(versionTypeChoice);
 
-        // Version selector
         JLabel versionLabel = new JLabel("Version:");
         versionLabel.setBounds(20, 60, 100, 25);
         add(versionLabel);
@@ -87,7 +84,6 @@ public class MeldInstaller extends JFrame {
         versionChoice.setEnabled(false);
         add(versionChoice);
 
-        // Minecraft directory
         JLabel minecraftDirLabel = new JLabel("Minecraft Dir:");
         minecraftDirLabel.setBounds(20, 100, 100, 25);
         add(minecraftDirLabel);
@@ -98,31 +94,20 @@ public class MeldInstaller extends JFrame {
 
         browseButton = new JButton("Browse...");
         browseButton.setBounds(390, 100, 80, 25);
-        browseButton.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                browseForDirectory();
-            }
-        });
+        browseButton.addActionListener(e -> browseForDirectory());
         add(browseButton);
 
-        // Install button
         installButton = new JButton("Install");
         installButton.setBounds(200, 160, 100, 30);
         installButton.setEnabled(false);
-        installButton.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                performInstall();
-            }
-        });
+        installButton.addActionListener(e -> performInstall());
         add(installButton);
 
-        // Progress bar
         progressBar = new JProgressBar(0, 100);
         progressBar.setBounds(20, 220, 460, 20);
         progressBar.setValue(0);
         add(progressBar);
 
-        // Status label
         statusLabel = new JTextArea("Loading versions...");
         statusLabel.setBounds(20, 250, 460, 120);
         statusLabel.setEditable(false);
@@ -156,11 +141,10 @@ public class MeldInstaller extends JFrame {
 
     private void loadVersionsAsync() {
         SwingWorker<Void, String> worker = new SwingWorker<Void, String>() {
-            protected Void doInBackground() throws Exception {
+            protected Void doInBackground() {
                 publish("Loading versions...");
 
-                // Load releases
-                List<Version> tempReleases = new ArrayList<Version>();
+                List<Version> tempReleases = new ArrayList<>();
                 try {
                     String releasesXML = httpGet("https://repo.coosanta.net/releases/net/coosanta/meldmc/maven-metadata.xml");
                     if (!releasesXML.isEmpty()) {
@@ -170,8 +154,7 @@ public class MeldInstaller extends JFrame {
                     System.err.println("Failed to load releases: " + e.getMessage());
                 }
 
-                // Load snapshots
-                List<Version> tempSnapshots = new ArrayList<Version>();
+                List<Version> tempSnapshots = new ArrayList<>();
                 try {
                     String snapshotsXML = httpGet("https://repo.coosanta.net/snapshots/net/coosanta/meldmc/maven-metadata.xml");
                     if (!snapshotsXML.isEmpty()) {
@@ -207,8 +190,8 @@ public class MeldInstaller extends JFrame {
             statusLabel.setText("Error: Failed to load versions from repository");
             JOptionPane.showMessageDialog(this,
                     "Error: Could not connect to the MeldMC repository.\n\n" +
-                            "Please check your internet connection and try again.\n" +
-                            "If the problem persists, the repository may be temporarily unavailable.",
+                    "Please check your internet connection and try again.\n" +
+                    "If the problem persists, the repository may be temporarily unavailable.",
                     "Connection Error",
                     JOptionPane.ERROR_MESSAGE);
             installButton.setEnabled(false);
@@ -272,27 +255,21 @@ public class MeldInstaller extends JFrame {
         SwingWorker<Boolean, Integer> worker = new SwingWorker<Boolean, Integer>() {
             protected Boolean doInBackground() throws Exception {
                 publish(10);
-                
+
                 String version = selectedVersion.getVersion();
                 String osString = getOSString();
 
                 // Update status
-                SwingUtilities.invokeLater(new Runnable() {
-                    public void run() {
-                        statusLabel.setText("Installing MeldMC...");
-                    }
-                });
+                SwingUtilities.invokeLater(() -> statusLabel.setText("Installing MeldMC..."));
 
                 // Create directories
                 Path versionDir = Paths.get(minecraftDir, "versions", "meldmc-" + version);
                 try {
                     Files.createDirectories(versionDir);
                 } catch (Exception e) {
-                    SwingUtilities.invokeLater(new Runnable() {
-                        public void run() {
-                            JOptionPane.showMessageDialog(MeldInstaller.this, "Failed to create version directory", "Error", JOptionPane.ERROR_MESSAGE);
-                            statusLabel.setText("Installation failed");
-                        }
+                    SwingUtilities.invokeLater(() -> {
+                        JOptionPane.showMessageDialog(MeldInstaller.this, "Failed to create version directory", "Error", JOptionPane.ERROR_MESSAGE);
+                        statusLabel.setText("Installation failed");
                     });
                     return false;
                 }
@@ -301,54 +278,38 @@ public class MeldInstaller extends JFrame {
 
                 // Download client JSON
                 String clientUrl = "https://repo.coosanta.net/releases/net/coosanta/meldmc/" + version + "/meldmc-" +
-                        version + "-client-" + osString + ".json";
+                                   version + "-client-" + osString + ".json";
                 Path clientPath = versionDir.resolve("meldmc-" + version + ".json");
 
-                SwingUtilities.invokeLater(new Runnable() {
-                    
-                    public void run() {
-                        statusLabel.setText("Downloading client configuration...");
-                    }
-                });
+                SwingUtilities.invokeLater(() -> statusLabel.setText("Downloading client configuration..."));
                 publish(50);
 
                 try {
                     if (!downloadFile(clientUrl, clientPath.toString())) {
-                        SwingUtilities.invokeLater(new Runnable() {
-                            
-                            public void run() {
-                                JOptionPane.showMessageDialog(MeldInstaller.this, "Failed to download client configuration from repository", "Error", JOptionPane.ERROR_MESSAGE);
-                                statusLabel.setText("Installation failed");
-                            }
+                        SwingUtilities.invokeLater(() -> {
+                            JOptionPane.showMessageDialog(MeldInstaller.this, "Failed to download client configuration from repository", "Error", JOptionPane.ERROR_MESSAGE);
+                            statusLabel.setText("Installation failed");
                         });
                         return false;
                     }
                 } catch (Exception e) {
-                    SwingUtilities.invokeLater(new Runnable() {
-                        
-                        public void run() {
-                            JOptionPane.showMessageDialog(MeldInstaller.this, "Failed to download client configuration: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
-                            statusLabel.setText("Installation failed");
-                        }
+                    SwingUtilities.invokeLater(() -> {
+                        JOptionPane.showMessageDialog(MeldInstaller.this, "Failed to download client configuration: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                        statusLabel.setText("Installation failed");
                     });
                     return false;
                 }
 
                 publish(70);
 
-                // Create/update launcher profile
-                SwingUtilities.invokeLater(new Runnable() {
-                    
-                    public void run() {
-                        statusLabel.setText("Creating launcher profile...");
-                    }
-                });
+                // Create or update launcher profile
+                SwingUtilities.invokeLater(() -> statusLabel.setText("Creating launcher profile..."));
                 publish(90);
 
                 try {
                     if (!createProfile(minecraftDir, version)) {
                         SwingUtilities.invokeLater(new Runnable() {
-                            
+
                             public void run() {
                                 JOptionPane.showMessageDialog(MeldInstaller.this, "Failed to create launcher profile", "Error", JOptionPane.ERROR_MESSAGE);
                                 statusLabel.setText("Installation failed");
@@ -357,23 +318,15 @@ public class MeldInstaller extends JFrame {
                         return false;
                     }
                 } catch (Exception e) {
-                    SwingUtilities.invokeLater(new Runnable() {
-                        
-                        public void run() {
-                            JOptionPane.showMessageDialog(MeldInstaller.this, "Failed to create launcher profile: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
-                            statusLabel.setText("Installation failed");
-                        }
+                    SwingUtilities.invokeLater(() -> {
+                        JOptionPane.showMessageDialog(MeldInstaller.this, "Failed to create launcher profile: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                        statusLabel.setText("Installation failed");
                     });
                     return false;
                 }
 
                 publish(100);
-                SwingUtilities.invokeLater(new Runnable() {
-                    
-                    public void run() {
-                        statusLabel.setText("MeldMC installed successfully!");
-                    }
-                });
+                SwingUtilities.invokeLater(() -> statusLabel.setText("MeldMC installed successfully!"));
 
                 return true;
             }
@@ -391,7 +344,7 @@ public class MeldInstaller extends JFrame {
                         Version selectedVersion = (Version) versionChoice.getSelectedItem();
                         JOptionPane.showMessageDialog(MeldInstaller.this,
                                 "MeldMC " + selectedVersion.getVersion() + " has been installed successfully!\n\n" +
-                                        "You can now select the MeldMC profile in your Minecraft launcher.",
+                                "You can now select the MeldMC profile in your Minecraft launcher.",
                                 "Installation Complete",
                                 JOptionPane.INFORMATION_MESSAGE);
                     } else {
@@ -487,7 +440,7 @@ public class MeldInstaller extends JFrame {
         }
 
         // Sort versions (latest first)
-        Collections.sort(versions, Collections.reverseOrder());
+        versions.sort(Collections.reverseOrder());
 
         return versions;
     }
@@ -506,54 +459,47 @@ public class MeldInstaller extends JFrame {
 
     private boolean createProfile(String minecraftDir, String version) throws Exception {
         Path profilesPath = Paths.get(minecraftDir, "launcher_profiles.json");
-        ObjectMapper mapper = new ObjectMapper();
+        Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
-        ObjectNode profiles;
+        JsonObject profiles;
 
         // Load existing profiles if they exist
         if (Files.exists(profilesPath)) {
             try {
-                JsonNode existingProfiles = mapper.readTree(profilesPath.toFile());
-                profiles = (ObjectNode) existingProfiles;
+                String existingContent = new String(Files.readAllBytes(profilesPath), StandardCharsets.UTF_8);
+                JsonElement existingProfiles = JsonParser.parseString(existingContent);
+                profiles = existingProfiles.getAsJsonObject();
             } catch (Exception e) {
                 // If parsing fails, start with empty profiles
-                profiles = mapper.createObjectNode();
+                profiles = new JsonObject();
             }
         } else {
-            profiles = mapper.createObjectNode();
+            profiles = new JsonObject();
         }
 
         // Ensure basic structure exists
         if (!profiles.has("profiles")) {
-            profiles.set("profiles", mapper.createObjectNode());
+            profiles.add("profiles", new JsonObject());
         }
 
         // Create MeldMC profile
         String profileName = "MeldMC " + version;
-        ObjectNode profilesNode = (ObjectNode) profiles.get("profiles");
-        ObjectNode profile = mapper.createObjectNode();
+        JsonObject profilesNode = profiles.getAsJsonObject("profiles");
+        JsonObject profile = new JsonObject();
 
-        profile.put("name", profileName);
-        profile.put("type", "custom");
-        profile.put("created", "1970-01-01T00:00:00.000Z");
-        profile.put("lastUsed", "1970-01-01T00:00:00.000Z");
-        profile.put("icon", "Grass");
-        profile.put("lastVersionId", "meldmc-" + version);
+        profile.addProperty("name", profileName);
+        profile.addProperty("type", "custom");
+        profile.addProperty("created", "1970-01-01T00:00:00.000Z");
+        profile.addProperty("lastUsed", "1970-01-01T00:00:00.000Z");
+        profile.addProperty("icon", "Grass");
+        profile.addProperty("lastVersionId", "meldmc-" + version);
 
-        profilesNode.set(profileName, profile);
+        profilesNode.add(profileName, profile);
 
         // Save profiles
         try (FileWriter writer = new FileWriter(profilesPath.toFile())) {
-            mapper.writerWithDefaultPrettyPrinter().writeValue(writer, profiles);
+            gson.toJson(profiles, writer);
             return true;
         }
-    }
-
-    public static void main(String[] args) {
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                new MeldInstaller().setVisible(true);
-            }
-        });
     }
 }
