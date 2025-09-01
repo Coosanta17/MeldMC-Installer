@@ -1,4 +1,18 @@
-### C++ template
+### Go template
+# Go build artifacts
+meldmc-installer
+meldmc-installer.exe
+MeldInstaller
+
+# Go specific
+*.test
+*.prof
+coverage.out
+
+# Legacy C++ files (moved to legacy/ directory)
+legacy/
+
+### C++ template (Legacy - being migrated to Go)
 # Prerequisites
 *.d
 
