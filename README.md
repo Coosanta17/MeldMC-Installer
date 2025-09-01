@@ -11,7 +11,7 @@ Third-party Minecraft launchers are a planned feature, however an installer for 
 
 ## Antivirus detection
 
-Many antivirus softwares will flag the installer as a "Trojan" or "Generic", this is unfortunately due to the nature of the installation modifying Minecraft files. If the antivirus is being particularly persistant, you can use the Java version (if you aren't already). **The installer is virus free!** If you want to confirm, you can build it yourself!
+Many antivirus softwares will flag the installer as a "Trojan" or "Generic", this is unfortunately due to the nature of the installation modifying Minecraft files. If the antivirus is being particularly persistent, you can use the Java version (if you aren't already). **The installer is virus free!** If you want to confirm, you can build it yourself!
 
 ## Building
 
