@@ -1,8 +1,40 @@
 # MeldMC Installer
 
-A lightweight, cross-platform GUI installer for MeldMC Minecraft instances built with Go and Fyne. Installer for the official Minecraft Launcher only (or any launcher that imitates it) - however other launchers are planned.
+Cross-platform GUI installer for MeldMC Minecraft instances. Available in multiple implementations:
 
-## Building
+- **Java Version** (`java/`): Swing-based installer using Java 8+ with fat JAR distribution
+- **Go Version** (root): Fyne-based installer with static linking
+- **C++ Version** (`legacy/`): Original FLTK-based implementation (reference/legacy)
+
+All versions provide identical functionality for the official Minecraft Launcher (or any launcher that imitates it).
+
+## Implementations
+
+### Java Version (Recommended)
+
+Cross-platform Swing application that packages as a self-contained fat JAR.
+
+**Requirements:**
+- Java 8 or higher
+- Maven for building
+
+**Building:**
+```bash
+cd java
+mvn clean package
+java -jar target/meldmc-installer.jar
+```
+
+### Go Version
+
+**Requirements:**
+- Go 1.21 or newer
+- System dependencies for GUI (platform-specific):
+  - **Linux**: `libgl1-mesa-dev xorg-dev`
+  - **Windows**: No additional dependencies
+  - **macOS**: No additional dependencies
+
+## Building (Go Version)
 
 ### Prerequisites
 
