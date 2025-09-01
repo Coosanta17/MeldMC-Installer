@@ -77,14 +77,6 @@ Simply double-click the meld installer executable (or jar).
 3. Creates the version folder in `./versions/{version}`
 4. Downloads the platform-specific client JSON configuration from https://repo.coosanta.net
 
-## Architecture
-
-The application is built with:
-- **Go**: Core language for robust, cross-platform development
-- **Fyne**: Modern, native GUI framework
-- **Standard library**: HTTP client, JSON/XML parsing, file operations
-- **Static linking**: Self-contained binaries with no external dependencies
-
 ## License
 
 This project is part of the MeldMC ecosystem. Please refer to the main MeldMC project for licensing information.
