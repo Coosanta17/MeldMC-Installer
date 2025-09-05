@@ -1,22 +1,63 @@
 # MeldMC Installer
 
-Cross-platform GUI installer for MeldMC Minecraft instances. Available in multiple implementations:
+A lightweight, cross-platform GUI installer for MeldMC Minecraft instances built with FLTK.
 
-- **Java Version** (`java/`): Swing-based installer using Java 8+ with fat JAR distribution
-- **Go Version** (root): Fyne-based installer with static linking
-- **C++ Version** (`legacy/`): Original FLTK-based implementation (reference/legacy)
+- **C++ Version** (`c++/`): FLTK-based installer using C++20 with statically linked binaries.
+- **Java Version** (`java/`): Swing-based installer using Java 8+ with fat JAR distribution.
 
 All versions provide identical functionality for the official Minecraft Launcher (or any launcher that imitates it).
 
-## Implementations
+Third-party Minecraft launchers are a planned feature, however an installer for these launchers is likely not needed.
 
-### Java Version (Recommended)
+## Antivirus detection
 
-Cross-platform Swing application that packages as a self-contained fat JAR.
+Many antivirus softwares will flag the installer as a "Trojan" or "Generic", this is unfortunately due to the nature of the installation modifying Minecraft files. If the antivirus is being particularly persistent, you can use the Java version (if you aren't already). **The installer is virus free!** If you want to confirm, you can build it yourself!
 
-**Requirements:**
-- Java 8 or higher
-- Maven for building
+## Building
+
+### C++ Version
+
+**Prerequisites:**
+- CMake 3.31 or newer
+- Conan 2 or newer
+
+**Building:**
+
+1. Install dependencies with conan:
+
+    *Linux*:
+    ```bash
+    mkdir build && cd build
+    conan install . --build=missing -c tools.system.package_manager:mode=install -c tools.system.package_manager:sudo=True
+    ```
+
+    *Windows and Mac:* (Windows must use MSVC, because OpenSSL is not supported on GCC MingW)
+    ```bash
+    mkdir build
+    cd build
+    conan install . --build=missing
+    ```
+
+2. Build with CMake
+
+    *Linux and Mac:*
+    ```bash
+    cmake -S .. -DCMAKE_TOOLCHAIN_FILE=build/Release/generators/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+    make -j
+    ```
+    *Windows:*
+    ```bash
+    cmake -S .. -DCMAKE_TOOLCHAIN_FILE=generators\conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+    cmake --build . --config Release
+    ```
+
+3. The resulting binary (`MeldInstaller`) is self-contained and can be distributed as a single file.
+
+### Java Version
+
+**Prerequisites:**
+- Java 8 or newer
+- Maven
 
 **Building:**
 ```bash
@@ -25,62 +66,9 @@ mvn clean package
 java -jar target/meldmc-installer.jar
 ```
 
-### Go Version
-
-**Requirements:**
-- Go 1.21 or newer
-- System dependencies for GUI (platform-specific):
-  - **Linux**: `libgl1-mesa-dev xorg-dev`
-  - **Windows**: No additional dependencies
-  - **macOS**: No additional dependencies
-
-## Building (Go Version)
-
-### Prerequisites
-
-- Go 1.21 or newer
-- System dependencies for GUI (platform-specific):
-  - **Linux**: `libgl1-mesa-dev xorg-dev`
-  - **Windows**: No additional dependencies
-  - **macOS**: No additional dependencies
-
-### Steps
-
-**Install system dependencies (Linux only):**
-```bash
-sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev xorg-dev
-```
-
-**Build the application:**
-
-*All platforms:*
-```bash
-go mod download
-go build -o meldmc-installer .
-```
-
-*For static builds:*
-
-*Linux:*
-```bash
-CGO_ENABLED=1 go build -ldflags="-s -w -extldflags=-static" -a -installsuffix cgo -o meldmc-installer .
-```
-
-*Windows:*
-```bash
-go build -ldflags="-s -w -H windowsgui" -o meldmc-installer.exe .
-```
-
-*macOS:*
-```bash
-CGO_ENABLED=1 go build -ldflags="-s -w" -o meldmc-installer .
-```
-
-The resulting binary is self-contained and can be distributed as a single file.
-
 ## Usage
 
-Simply double-click the `meldmc-installer` executable (or `meldmc-installer.exe` on Windows).
+Simply double-click the meld installer executable (or jar).
 
 ## What the Installer Does
 
@@ -88,14 +76,6 @@ Simply double-click the `meldmc-installer` executable (or `meldmc-installer.exe`
 2. Adds a "MeldMC" profile to `launcher_profiles.json`
 3. Creates the version folder in `./versions/{version}`
 4. Downloads the platform-specific client JSON configuration from https://repo.coosanta.net
-
-## Architecture
-
-The application is built with:
-- **Go**: Core language for robust, cross-platform development
-- **Fyne**: Modern, native GUI framework
-- **Standard library**: HTTP client, JSON/XML parsing, file operations
-- **Static linking**: Self-contained binaries with no external dependencies
 
 ## License
 
