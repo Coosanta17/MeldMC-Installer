@@ -361,8 +361,14 @@ public:
         Fl::check();
 
         // Download client JSON
-        const std::string clientUrl = "https://repo.coosanta.net/releases/net/coosanta/meldmc/" + version + "/meldmc-" +
+        const bool isSnapshot = versionTypeChoice->value() == 1;
+        const std::string baseUrl = isSnapshot
+                                        ? "https://repo.coosanta.net/snapshots/net/coosanta/meldmc/"
+                                        : "https://repo.coosanta.net/releases/net/coosanta/meldmc/";
+
+        const std::string clientUrl = baseUrl + version + "/meldmc-" +
                                       version + "-client-" + osString + ".json";
+
         const std::string clientPath = versionDir + "/meldmc-" + version + ".json";
 
         statusLabel->label("Downloading client configuration...");

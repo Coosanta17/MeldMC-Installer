@@ -253,7 +253,7 @@ public class MeldInstaller extends JFrame {
         versionChoice.setEnabled(false);
 
         SwingWorker<Boolean, Integer> worker = new SwingWorker<Boolean, Integer>() {
-            protected Boolean doInBackground() throws Exception {
+            protected Boolean doInBackground() {
                 publish(10);
 
                 String version = selectedVersion.getVersion();
@@ -277,8 +277,12 @@ public class MeldInstaller extends JFrame {
                 publish(30);
 
                 // Download client JSON
-                String clientUrl = "https://repo.coosanta.net/releases/net/coosanta/meldmc/" + version + "/meldmc-" +
-                                   version + "-client-" + osString + ".json";
+                boolean isSnapshot = versionTypeChoice.getSelectedIndex() == 1;
+                String baseUrl = isSnapshot
+                        ? "https://repo.coosanta.net/snapshots/net/coosanta/meldmc/"
+                        : "https://repo.coosanta.net/releases/net/coosanta/meldmc/";
+                String clientUrl = baseUrl + version + "/meldmc-" + version + "-client-" + osString + ".json";
+
                 Path clientPath = versionDir.resolve("meldmc-" + version + ".json");
 
                 SwingUtilities.invokeLater(() -> statusLabel.setText("Downloading client configuration..."));
@@ -308,12 +312,9 @@ public class MeldInstaller extends JFrame {
 
                 try {
                     if (!createProfile(minecraftDir, version)) {
-                        SwingUtilities.invokeLater(new Runnable() {
-
-                            public void run() {
-                                JOptionPane.showMessageDialog(MeldInstaller.this, "Failed to create launcher profile", "Error", JOptionPane.ERROR_MESSAGE);
-                                statusLabel.setText("Installation failed");
-                            }
+                        SwingUtilities.invokeLater(() -> {
+                            JOptionPane.showMessageDialog(MeldInstaller.this, "Failed to create launcher profile", "Error", JOptionPane.ERROR_MESSAGE);
+                            statusLabel.setText("Installation failed");
                         });
                         return false;
                     }
