@@ -45,7 +45,7 @@ jobs:
           - os: ubuntu-22.04
             artifact_name: MeldInstaller-linux-x64
             strip_cmd: strip --strip-unneeded MeldInstaller
-          - os: macos-13
+          - os: macos-14-large
             artifact_name: MeldInstaller-mac-x64
             strip_cmd: strip MeldInstaller
           - os: macos-14
